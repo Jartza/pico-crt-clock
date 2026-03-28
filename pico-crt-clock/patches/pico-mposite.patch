@@ -1,0 +1,157 @@
+diff --git a/cvideo.c b/cvideo.c
+index b915759..2d4c05d 100644
+--- a/cvideo.c
++++ b/cvideo.c
+@@ -26,7 +26,8 @@
+ 
+ #include "hardware/pio.h"
+ #include "hardware/dma.h"
+-#include "hardware/irq.h"   
++#include "hardware/irq.h"
++#include "hardware/gpio.h"
+ 
+ #include "charset.h"            // The character set
+ #include "cvideo.h"
+@@ -122,7 +123,12 @@ int initialise_cvideo(void) {
+ 		gpio_base,								// Start pin in the GPIO
+ 		gpio_count,								// Number of pins
+ 		piofreq_0								// State machine clock frequency
+-	);	
++	);
++    // Join unused RX FIFO into TX — doubles TX depth from 4 to 8 entries
++    // (~8µs → ~16µs margin for cvideo_dma_handler before sync SM stalls).
++    // Bit 30 of SM SHIFTCTRL = FJOIN_TX (RP2040 datasheet §3.5.4).
++    pio_0->sm[sm_sync].shiftctrl |= (1u << 30);
++
+     cvideo_configure_pio_dma(					// Configure the DMA
+         pio_0,									// The PIO to attach this DMA to
+         sm_sync,								// The state machine number
+@@ -136,7 +142,7 @@ int initialise_cvideo(void) {
+ 
+ 	// Initialise the second PIO (pixel data)
+ 	//
+-    cvideo_data_initialise_pio(					
++    cvideo_data_initialise_pio(
+ 		pio_0,
+ 		sm_data,
+ 		offset_1,
+@@ -144,6 +150,8 @@ int initialise_cvideo(void) {
+ 		gpio_count,
+ 		piofreq_1_256
+ 	);
++    // Same for pixel SM — 8-entry TX FIFO reduces underrun risk on DMA ch1 reload.
++    pio_0->sm[sm_data].shiftctrl |= (1u << 30);
+ 
+     // Initialise the DMA
+     //
+@@ -164,7 +172,15 @@ int initialise_cvideo(void) {
+     irq_set_enabled(PIO0_IRQ_0, true);			// Enable it    
+ 
+     set_border(0);                              // Set the border colour
+-    cls(0);                                     // Clear the screen      
++    cls(0);                                     // Clear the screen
++
++    // Reduce DAC GPIO drive strength and slew rate to limit switching noise on
++    // the 3.3V supply rail — helps USB coexistence.  Video quality is unaffected:
++    // even SLOW slew gives ~2ns edges, well inside the 200ns pixel period.
++    for (uint g = gpio_base; g < (uint)(gpio_base + gpio_count); g++) {
++        gpio_set_slew_rate(g, GPIO_SLEW_RATE_SLOW);
++        gpio_set_drive_strength(g, GPIO_DRIVE_STRENGTH_2MA);
++    }
+ 
+ 	// Start the PIO state machines
+ 	//
+@@ -245,7 +261,8 @@ void wait_vblank(void) {
+ // This sets up the DMA for cvideo_data with pixel data and is triggered by the irq set 0
+ // instruction at the end of the PIO
+ //
+-void cvideo_pio_handler(void) {
++// In SRAM via __not_in_flash_func — avoids XIP latency during interrupt dispatch.
++void __not_in_flash_func(cvideo_pio_handler)(void) {
+     if(bline >= height) {
+         bline = 0;
+     }
+@@ -255,8 +272,8 @@ void cvideo_pio_handler(void) {
+ 
+ // The DMA interrupt handler
+ // This feeds the state machine cvideo_sync with data for the PAL(ish) video signal
+-// 
+-void cvideo_dma_handler(void) {
++//
++void __not_in_flash_func(cvideo_dma_handler)(void) {
+ 	
+     // Switch condition on the vertical scanline number (vline)
+     // Each statement does a dma_channel_set_read_addr to point the PIO to the next data to output
+@@ -301,7 +318,47 @@ void cvideo_dma_handler(void) {
+ 
+     // Finally, clear the interrupt request ready for the next horizontal sync interrupt
+     //
+-    dma_hw->ints0 = 1u << dma_channel_0;	
++    dma_hw->ints1 = 1u << dma_channel_0;	// clear IRQ_1 status (patched from IRQ_0)
++}
++
++// Stop PIO state machines, abort DMA channels, disable IRQs and zero DAC GPIO pins.
++// Must be called from core1 — the IRQs are owned by core1's NVIC.
++//
++void deinit_cvideo(void) {
++    // Disable IRQs first so handlers can't re-arm after we abort.
++    // PIO IRQ before DMA IRQ: the PIO handler arms the pixel DMA;
++    // the DMA handler re-arms the sync DMA.  Disabling in this order
++    // ensures neither handler fires after the abort below.
++    irq_set_enabled(PIO0_IRQ_0, false);
++    irq_set_enabled(DMA_IRQ_1,  false);
++
++    // Abort any in-flight DMA transfers (blocks until current beat completes).
++    dma_channel_abort(dma_channel_1);   // pixel data
++    dma_channel_abort(dma_channel_0);   // sync
++
++    // Stop the PIO state machines and drain their FIFOs.
++    pio_sm_set_enabled(pio_0, sm_data, false);
++    pio_sm_set_enabled(pio_0, sm_sync, false);
++    pio_sm_clear_fifos(pio_0, sm_data);
++    pio_sm_clear_fifos(pio_0, sm_sync);
++
++    // Reclaim DAC GPIO pins from PIO control and drive them low (0 V on DAC).
++    for (uint g = gpio_base; g < (uint)(gpio_base + gpio_count); g++) {
++        gpio_init(g);               // resets pad to SIO, clears PIO mux
++        gpio_set_dir(g, GPIO_OUT);
++        gpio_put(g, 0);
++    }
++
++    // Release PIO programs and state machines so they can be re-claimed on
++    // reinit (e.g. after a soft reset without power-cycle).
++    pio_sm_unclaim(pio_0, sm_data);
++    pio_sm_unclaim(pio_0, sm_sync);
++    pio_remove_program(pio_0, &cvideo_data_program, offset_1);
++    pio_remove_program(pio_0, &cvideo_sync_program, offset_0);
++
++    // Release DMA channels for the same reason.
++    dma_channel_unclaim(dma_channel_1);
++    dma_channel_unclaim(dma_channel_0);
+ }
+ 
+ // Configure the PIO DMA
+@@ -325,8 +382,9 @@ void cvideo_configure_pio_dma(PIO pio, uint sm, uint dma_channel, uint transfer_
+         true                        // Start flag (true = start immediately)
+     );
+     if(handler != NULL) {
+-        dma_channel_set_irq0_enabled(dma_channel, true);
+-        irq_set_exclusive_handler(DMA_IRQ_0, handler);
+-        irq_set_enabled(DMA_IRQ_0, true);
++        // Use DMA_IRQ_1 to avoid conflict with MicroPython's DMA_IRQ_0 shared handler
++        dma_channel_set_irq1_enabled(dma_channel, true);
++        irq_set_exclusive_handler(DMA_IRQ_1, handler);
++        irq_set_enabled(DMA_IRQ_1, true);
+     }
+ }
+\ No newline at end of file
+diff --git a/cvideo.h b/cvideo.h
+index de8147a..92353fc 100644
+--- a/cvideo.h
++++ b/cvideo.h
+@@ -62,3 +62,5 @@ void cvideo_dma_handler(void);
+ 
+ void wait_vblank(void);
+ void set_border(unsigned char colour);
++
++void deinit_cvideo(void);
