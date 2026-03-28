@@ -18,7 +18,7 @@ key required).
 |---|---|
 | MCU board | Raspberry Pi Pico W (WiFi used for NTP and weather) |
 | Display | Any TV or monitor accepting a composite PAL signal |
-| DAC | R-2R resistor ladder on GP0-GP4 (see pico-mposite for wiring) |
+| DAC | R-2R resistor ladder on GP0-GP4, see [pico-mposite for wiring](https://github.com/breakintoprogram/pico-mposite/blob/main/hardware/pcb/schematic/Pico-mposite.pdf) |
 
 The DAC maps a 5-bit value to a voltage level:
 
