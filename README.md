@@ -99,6 +99,17 @@ IRQs (`DMA_IRQ_1`, `PIO0_IRQ_0`) are owned by core1.
 
 ---
 
+## Prerequisites
+
+- ARM cross-compiler: `gcc-arm-none-eabi`
+- `cmake`, `make`, `git`, `python3`
+
+On Debian/Ubuntu:
+
+```bash
+sudo apt install gcc-arm-none-eabi cmake make git python3
+```
+
 ## Build
 
 Both submodules are kept vanilla. `build.sh` applies the patches before
