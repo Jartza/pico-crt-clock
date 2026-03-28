@@ -21,7 +21,7 @@ PATCH_PM="$SCRIPT_DIR/patches/pico-mposite.patch"
 apply_patch() {
     local repo="$1" patchfile="$2"
     if git -C "$repo" apply --check --ignore-whitespace "$patchfile" 2>/dev/null; then
-        git -C "$repo" apply --ignore-whitespace "$patchfile"
+        git -C "$repo" apply --ignore-whitespace --whitespace=nowarn "$patchfile"
         echo "  applied: $(basename "$patchfile")"
     else
         echo "  already applied (skipping): $(basename "$patchfile")"
@@ -31,7 +31,7 @@ apply_patch() {
 revert_patch() {
     local repo="$1" patchfile="$2"
     if git -C "$repo" apply --check --ignore-whitespace -R "$patchfile" 2>/dev/null; then
-        git -C "$repo" apply --ignore-whitespace -R "$patchfile"
+        git -C "$repo" apply --ignore-whitespace --whitespace=nowarn -R "$patchfile"
         echo "  reverted: $(basename "$patchfile")"
     fi
 }
