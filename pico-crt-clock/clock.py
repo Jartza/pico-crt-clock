@@ -174,7 +174,7 @@ def fetch_weather(show_msg=False):
         "?latitude={}&longitude={}"
         "&current=temperature_2m,weather_code,wind_speed_10m"
         "&daily=weather_code,temperature_2m_max"
-        "&forecast_days=7&timezone=Europe%2FHelsinki"
+        "&forecast_days=7&timezone=auto"
         "&temperature_unit={}&wind_speed_unit={}"
     ).format(LATITUDE, LONGITUDE,
              "fahrenheit" if TEMP_UNIT == "F" else "celsius",
