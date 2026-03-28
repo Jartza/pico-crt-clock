@@ -5,7 +5,7 @@ import ntptime
 import urequests
 import json
 from icons import sky_sun, sky_partly, sky_cloud, precip_drizzle, precip_rain, precip_snow, precip_thunder
-from config import WIFI_SSID, WIFI_PASS, LATITUDE, LONGITUDE, WEATHER_INTERVAL, FORECAST_NEXT_DAY_HOUR
+from config import WIFI_SSID, WIFI_PASS, LATITUDE, LONGITUDE, WEATHER_INTERVAL, FORECAST_NEXT_DAY_HOUR, UTC_OFFSET, USE_DST, CLOCK_12H, DATE_ORDER, DATE_SEP, TEMP_UNIT, WIND_UNIT
 
 # pico-mposite palette indices — B/W display
 BLACK = 0
@@ -19,7 +19,7 @@ WIFI_TIMEOUT_MS = 30000
 # Temp  2× font:              centred (up to 4 chars, e.g. "+37C")
 # Forecast: 3 columns, 32 px icon width, 40 px outer margins
 #   left edges: 40, 112, 184  (40+32+40+32+40+32+40 = 256 ✓)
-TIME_X, TIME_Y = 64, 0
+TIME_Y = 0
 DATE_Y         = 18
 TODAY_Y        = 40
 FORECAST_X     = [40, 112, 184]
@@ -27,13 +27,18 @@ FORECAST_Y     = 68     # top of forecast block (day label)
 GRAYBAR_Y      = 160    # grayscale calibration bar (256×32 px)
 
 # Burn-in screensaver — DVD-style diagonal bounce.
-# Worst-case content extents (4-char forecast temp "+37C"/"-10C"):
+# Worst-case content width is 4 chars for both °C ("+50C") and °F ("110F" — no plus,
+# since sub-zero Fahrenheit never reaches 3 digits in any realistic climate).
 #   left=24, right=232, top=0, bottom=129  →  ox ∈ [−24,+24], oy ∈ [0,63]
 SS_OX_MAX = 24
 SS_OY_MAX = 63
 
 # Weekday constants for date display and DST handling.  Adjust to your locale as needed.
 DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+
+_WIND_LABEL = {"ms": "m/s", "kmh": "km/h", "mph": "mph", "kn": "kn"}
+WIND_LABEL  = _WIND_LABEL.get(WIND_UNIT, WIND_UNIT)
+TEMP_FMT    = "{:+d}" if TEMP_UNIT == "C" else "{:d}"
 
 gfx.init()
 gfx.set_border(0)
@@ -55,13 +60,12 @@ def _last_sunday(yr, mon):
         last = 29 if yr % 4 == 0 and (yr % 100 != 0 or yr % 400 == 0) else 28
     return last - _weekday(yr, mon, last)   # step back from last day to Sunday
 
-# Finnish/European DST.
-# Adjust dates to your own location or remove DST handling if not needed.
-# DST handling is hardcoded for simplicity. In Finland, and most of the
-# Europe, DST starts on the last Sunday of March at 03:00 (clocks go
-# forward to 04:00) and ends on the last Sunday of October at 04:00
-# (clocks go back to 03:00).
 def _utc_offset(utc_ts):
+    base = UTC_OFFSET * 3600
+    if not USE_DST:
+        return base
+    # European DST: +1 h from last Sunday of March 01:00 UTC
+    # to last Sunday of October 01:00 UTC.
     t   = time.localtime(utc_ts)
     yr, mon, day, hour = t[0], t[1], t[2], t[3]
     ds  = _last_sunday(yr, 3)
@@ -71,7 +75,7 @@ def _utc_offset(utc_ts):
         or (mon == 3  and (day > ds or (day == ds and hour >= 1)))
         or (mon == 10 and (day < de or (day == de and hour <  1)))
     )
-    return 3 * 3600 if summer else 2 * 3600
+    return base + 3600 if summer else base
 
 # Window drawing helper: all content is redrawn every frame, so we can just issue
 # one cls() and then blit text/icons without extra vblank waits (cls() includes
@@ -80,13 +84,14 @@ def _utc_offset(utc_ts):
 # them in C before the next field.
 def draw_all(time_str, date_str, cur_temp, wind_speed, weather_days, ox=0, oy=0):
     gfx.cls(BLACK)
-    gfx.print_string_2x(TIME_X + ox, TIME_Y + oy, time_str, BLACK, WHITE)
+    tx = (256 - len(time_str) * 16) // 2 + ox
+    gfx.print_string_2x(tx, TIME_Y + oy, time_str, BLACK, WHITE)
     gfx.print_string((256 - len(date_str) * 8) // 2 + ox, DATE_Y + oy, date_str, BLACK, WHITE)
     if cur_temp is not None:
         if wind_speed is not None:
-            ts = "{:+d}C  {:d}m/s".format(cur_temp, wind_speed)
+            ts = (TEMP_FMT + "{}  {:d}{}").format(cur_temp, TEMP_UNIT, wind_speed, WIND_LABEL)
         else:
-            ts = "{:+d}C".format(cur_temp)
+            ts = (TEMP_FMT + "{}").format(cur_temp, TEMP_UNIT)
         tx = 128 + ox - len(ts) * 8
         gfx.print_string_2x(tx, TODAY_Y + oy, ts, BLACK, WHITE)
         bx0 = tx - 3
@@ -170,8 +175,10 @@ def fetch_weather(show_msg=False):
         "&current=temperature_2m,weather_code,wind_speed_10m"
         "&daily=weather_code,temperature_2m_max"
         "&forecast_days=7&timezone=Europe%2FHelsinki"
-        "&wind_speed_unit=ms"
-    ).format(LATITUDE, LONGITUDE)
+        "&temperature_unit={}&wind_speed_unit={}"
+    ).format(LATITUDE, LONGITUDE,
+             "fahrenheit" if TEMP_UNIT == "F" else "celsius",
+             WIND_UNIT)
     try:
         r = urequests.get(url, timeout=20)
         data = r.json()
@@ -201,7 +208,7 @@ def parse_weather(data, start_day=0):
             # Sakamoto gives 0=Sunday; shift to DAYS index (0=Mon … 6=Sun)
             day_name = DAYS[(_weekday(yr, mon, day) + 6) % 7]
             sky_ic, prc_ic = _wmo_icons(code)
-            days.append((sky_ic, prc_ic, "{:+d}C".format(tmax), day_name))
+            days.append((sky_ic, prc_ic, (TEMP_FMT + "{}").format(tmax, TEMP_UNIT), day_name))
         return cur_temp, wind_speed, days
     except Exception:
         return None, None, None
@@ -257,8 +264,13 @@ while True:
     yr, mon, day = t[0], t[1], t[2]
     h,  m,   s   = t[3], t[4], t[5]
 
-    time_str = "{:02d}:{:02d}:{:02d}".format(h, m, s)
-    date_str = "{}.{}.{:04d}".format(day, mon, yr)
+    if CLOCK_12H:
+        h12 = h % 12 or 12
+        time_str = "{}:{:02d}:{:02d}{}".format(h12, m, s, "am" if h < 12 else "pm")
+    else:
+        time_str = "{:02d}:{:02d}:{:02d}".format(h, m, s)
+    _dp = {'D': str(day), 'M': str(mon), 'Y': str(yr)}
+    date_str = DATE_SEP.join(_dp[c] for c in DATE_ORDER)
 
     # Day change: trigger weather refresh and silent NTP re-sync for RTC drift
     if day != last_day:
