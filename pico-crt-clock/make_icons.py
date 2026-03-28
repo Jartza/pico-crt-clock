@@ -1,5 +1,5 @@
-# ── icon building helpers ─────────────────────────────────────────────────
-# Icons are 32×16 px, one byte per pixel (value 0–15).
+# -- icon building helpers -------------------------------------------------
+# Icons are 32x16 px, one byte per pixel (value 0-15).
 # Helpers run once at boot; the icon bytearrays persist for the session.
 
 def _px(b, x, y, v, w=32, h=16):
@@ -46,7 +46,7 @@ def _lightning(b, x0, y0, x1, y1, x2, y2, x3, y3, c):
     _line(b, x1, y1, x2, y2, c)
     _line(b, x2, y2, x3, y3, c)
 
-# ── sky icons (32×16) ─────────────────────────────────────────────────────
+# -- sky icons (32x16) -----------------------------------------------------
 def _make_sky_sun():
     b = bytearray(32 * 16)
     _fill_circle(b, 15, 7, 4, 15)          # disc, white
@@ -82,11 +82,11 @@ def _make_sky_partly():
     _fill_rect  (b,  5, 12, 26, 15, 11)   # fill cloud bottom
     return b
 
-# ── precipitation icons (32×16) ───────────────────────────────────────────
+# -- precipitation icons (32x16) -------------------------------------------
 
 def _make_precip_rain():
     b = bytearray(32 * 16)
-    # Short diagonal streaks: 4 columns × 3 rows, fading from top
+    # Short diagonal streaks: 4 columns x 3 rows, fading from top
     for cx in (3, 11, 19, 27):
         for cy in (1, 6, 11):
             for d in range(3):
@@ -148,7 +148,7 @@ def _print_bytearray_hex(name, b):
     return("{} = bytearray([\n    {},\n])\n\n".format(name, hex_str))
 
 
-# ── construct icons ───────────────────────────────────────────────────────
+# -- construct icons -------------------------------------------------------
 sky_sun        = _make_sky_sun()
 sky_partly     = _make_sky_partly()
 sky_cloud      = _make_sky_cloud()

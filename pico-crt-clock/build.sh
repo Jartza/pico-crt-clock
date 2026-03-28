@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# build.sh — out-of-tree firmware build with patch/revert for vanilla submodules.
+# build.sh - out-of-tree firmware build with patch/revert for vanilla submodules.
 # Patches are applied before the build and reverted on exit (success or failure).
 # Run from anywhere; paths are relative to this script's location.
 
@@ -17,7 +17,7 @@ PIO_SRC="$ROOT/pico-mposite"
 PATCH_MP="$SCRIPT_DIR/patches/micropython-no-thread.patch"
 PATCH_PM="$SCRIPT_DIR/patches/pico-mposite.patch"
 
-# ── patch helpers ──────────────────────────────────────────────────────────────
+# -- patch helpers --------------------------------------------------------------
 apply_patch() {
     local repo="$1" patchfile="$2"
     if git -C "$repo" apply --check --ignore-whitespace "$patchfile" 2>/dev/null; then
@@ -43,22 +43,22 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# ── 1. initialise micropython submodules (pico-sdk, tinyusb, etc.) ────────────
+# -- 1. initialise micropython submodules (pico-sdk, tinyusb, etc.) ------------
 echo "Initialising MicroPython submodules..."
 make -C "$MP_PORT" BOARD=$BOARD submodules
 
-# ── 2. apply patches ──────────────────────────────────────────────────────────
+# -- 2. apply patches ----------------------------------------------------------
 echo "Applying patches..."
 apply_patch "$ROOT/micropython" "$PATCH_MP"
 apply_patch "$ROOT/pico-mposite" "$PATCH_PM"
 
-# ── 3. build mpy-cross if needed ──────────────────────────────────────────────
+# -- 3. build mpy-cross if needed ----------------------------------------------
 if [ ! -f "$ROOT/micropython/mpy-cross/build/mpy-cross" ]; then
     echo "Building mpy-cross..."
     make -C "$ROOT/micropython/mpy-cross"
 fi
 
-# ── 4. cmake configure + pioasm ───────────────────────────────────────────────
+# -- 4. cmake configure + pioasm -----------------------------------------------
 if [ ! -f "$PIOASM" ]; then
     echo "Configuring cmake (build dir: $BUILD_DIR)..."
     cmake -S "$MP_PORT" -B "$BUILD_DIR" \
@@ -75,7 +75,7 @@ echo "Generating PIO headers..."
 "$PIOASM" "$PIO_SRC/cvideo_sync.pio" "$SCRIPT_DIR/cvideo_sync.pio.h"
 "$PIOASM" "$PIO_SRC/cvideo_data.pio" "$SCRIPT_DIR/cvideo_data.pio.h"
 
-# ── 5. build firmware ─────────────────────────────────────────────────────────
+# -- 5. build firmware ---------------------------------------------------------
 echo "Building MicroPython firmware with gfx module..."
 make -C "$BUILD_DIR" -j$(nproc)
 

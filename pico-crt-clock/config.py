@@ -11,7 +11,7 @@ UTC_OFFSET = 2
 # Set to False for fixed-offset timezones (e.g. UTC, IST, JST).
 USE_DST = True
 
-# Location for weather — Open-Meteo uses decimal degrees
+# Location for weather - Open-Meteo uses decimal degrees
 LATITUDE  = 60.22   # Ikkala, Lohja, Finland (adjust as needed)
 LONGITUDE = 24.03
 
@@ -25,7 +25,7 @@ FORECAST_NEXT_DAY_HOUR = 18
 CLOCK_12H = False
 
 # Date format: order of components (D=day, M=month, Y=year) and separator.
-# Examples: "DMY" + "." → "28.3.2026"   "MDY" + "/" → "3/28/2026"   "YMD" + "-" → "2026-3-28"
+# Examples: "DMY" + "." -> "28.3.2026"   "MDY" + "/" -> "3/28/2026"   "YMD" + "-" -> "2026-3-28"
 DATE_ORDER = "DMY"
 DATE_SEP   = "."
 

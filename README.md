@@ -18,7 +18,7 @@ key required).
 |---|---|
 | MCU board | Raspberry Pi Pico W (WiFi used for NTP and weather) |
 | Display | Any TV or monitor accepting a composite PAL signal |
-| DAC | R-2R resistor ladder on GP0–GP4 (see pico-mposite for wiring) |
+| DAC | R-2R resistor ladder on GP0-GP4 (see pico-mposite for wiring) |
 
 The DAC maps a 5-bit value to a voltage level:
 
@@ -28,7 +28,7 @@ The DAC maps a 5-bit value to a voltage level:
 | 0x10 | Black (blanking level) |
 | 0x1F | White (peak luminance) |
 
-The Python API uses palette indices **0 (black) … 15 (white)**; the `gfx` module
+The Python API uses palette indices **0 (black) ... 15 (white)**; the `gfx` module
 adds `colour_base = 0x10` before writing to the framebuffer so pixel values never
 reach sync level.
 
@@ -40,7 +40,7 @@ reach sync level.
 pico-crt-clock/           project sources; build from here
   build.sh                  one-shot build + patch script
   micropython.cmake         build-system glue (USER_C_MODULES)
-  gfx_queue.h               shared ring buffer + command struct (core0 ↔ core1)
+  gfx_queue.h               shared ring buffer + command struct (core0 <-> core1)
   gfx_core1.c               core1 entry point and command dispatcher
   gfx_core1.h               gfx_core1_launch() declaration
   mod_gfx.c                 MicroPython C extension module "gfx"
@@ -69,14 +69,14 @@ build and are not committed.
 
 ```
 core0 (MicroPython)                core1 (video engine)
-─────────────────────              ────────────────────
+---------------------              --------------------
 clock.py                           initialise_cvideo()
-  └─ gfx.* calls                     PIO0 SM0  — sync  (cvideo_sync.pio)
-       └─ mod_gfx.c                   PIO0 SM1  — data  (cvideo_data.pio)
-            └─ gfx_queue (push)       DMA ch0   — sync table → SM0 TX FIFO
-                                      DMA ch1   — bitmap row → SM1 TX FIFO
-                    ↕  ring buffer    DMA_IRQ_1 — scanline handler (core1)
-                                      PIO0_IRQ_0 — pixel DMA trigger (core1)
+  +-- gfx.* calls                     PIO0 SM0  - sync  (cvideo_sync.pio)
+       +-- mod_gfx.c                   PIO0 SM1  - data  (cvideo_data.pio)
+            +-- gfx_queue (push)       DMA ch0   - sync table -> SM0 TX FIFO
+                                      DMA ch1   - bitmap row -> SM1 TX FIFO
+                    |  ring buffer    DMA_IRQ_1 - scanline handler (core1)
+                                      PIO0_IRQ_0 - pixel DMA trigger (core1)
 ```
 
 **Key design points**
@@ -86,7 +86,7 @@ clock.py                           initialise_cvideo()
 - `patches/pico-mposite.patch` redirects DMA from `DMA_IRQ_0` to `DMA_IRQ_1`
   (avoiding conflict with MicroPython's shared DMA_IRQ_0 handler), adds
   `FJOIN_TX` to double the TX FIFO depth on both PIO SMs, places ISRs in SRAM
-  with `__not_in_flash_func`, sets GP0–GP4 drive strength to 2 mA / slow slew
+  with `__not_in_flash_func`, sets GP0-GP4 drive strength to 2 mA / slow slew
   to reduce switching noise, and adds `deinit_cvideo()`.
 - `patches/micropython-no-thread.patch` sets `MICROPY_PY_THREAD = 0`; the
   threading ISR on `SIO_IRQ_PROC0` would consume the FIFO acknowledgement that
@@ -104,7 +104,7 @@ clock.py                           initialise_cvideo()
 ## Build
 
 Both submodules are kept vanilla. `build.sh` applies the patches before
-building and reverts them on exit via `trap` — they are always restored even
+building and reverts them on exit via `trap` - they are always restored even
 if the build fails.
 
 ```bash
@@ -113,7 +113,7 @@ cd pico-crt-clock
 ```
 
 The script:
-1. Initialises MicroPython submodules (pico-sdk, tinyusb, …)
+1. Initialises MicroPython submodules (pico-sdk, tinyusb, ...)
 2. Applies `patches/micropython-no-thread.patch` and `patches/pico-mposite.patch`
 3. Builds `mpy-cross` if needed
 4. Runs cmake (out-of-tree into `../build-RPI_PICO_W/`), builds pioasm,
@@ -142,7 +142,7 @@ mpremote fs cp pico-crt-clock/icons.py   :icons.py
 mpremote fs cp pico-crt-clock/config.py  :config.py
 ```
 
-Edit `config.py` first — it contains your WiFi credentials and location
+Edit `config.py` first - it contains your WiFi credentials and location
 (latitude/longitude for weather).
 
 If you change icons, regenerate `icons.py` on the PC first:
@@ -163,7 +163,7 @@ python run_sim.py
 
 `gfx.py` is a pygame-based mock of the `gfx` C extension. Network calls are
 always-connected mocks; weather is fetched live from Open-Meteo.
-Set `SCALE` in `gfx.py` to resize the window (default 3×).
+Set `SCALE` in `gfx.py` to resize the window (default 3x).
 
 ---
 
@@ -181,7 +181,7 @@ gfx.cls(colour)                         # Clear screen; waits for vblank first
 gfx.wait_vblank()                       # Block until next vertical blank
 gfx.set_border(colour)                  # Set overscan border colour
 
-# Drawing  — colour is 0 (black) … 15 (white)
+# Drawing  - colour is 0 (black) ... 15 (white)
 gfx.plot(x, y, colour)
 gfx.line(x0, y0, x1, y1, colour)
 gfx.hline(y, x0, x1, colour)
@@ -189,22 +189,22 @@ gfx.circle(x, y, r, colour, filled)
 gfx.triangle(x0, y0, x1, y1, x2, y2, colour, filled)
 gfx.polygon(x0, y0, x1, y1, x2, y2, x3, y3, colour, filled)
 
-# Text — colour indices as above; bg/fg are background/foreground
+# Text - colour indices as above; bg/fg are background/foreground
 gfx.print_char(x, y, char_int, bg, fg)
-gfx.print_string(x, y, string, bg, fg)       # 1× scale (8×8 px per glyph)
-gfx.print_string_2x(x, y, string, bg, fg)    # 2× scale (16×16 px per glyph)
+gfx.print_string(x, y, string, bg, fg)       # 1x scale (8x8 px per glyph)
+gfx.print_string_2x(x, y, string, bg, fg)    # 2x scale (16x16 px per glyph)
 gfx.scroll_up(colour, rows)
 
 # Sprites
 gfx.blit(buf, sw, sh, dx, dy)
-# buf  — bytes or bytearray, sw*sh bytes, one byte per pixel (values 0–15)
-# sw   — sprite width in pixels
-# sh   — sprite height in pixels
-# dx   — destination X on screen
-# dy   — destination Y on screen
+# buf  - bytes or bytearray, sw*sh bytes, one byte per pixel (values 0-15)
+# sw   - sprite width in pixels
+# sh   - sprite height in pixels
+# dx   - destination X on screen
+# dy   - destination Y on screen
 # gfx.blit() adds colour_base (0x10) automatically.
-# Maximum sprite size: 256×32 px (GFX_BLIT_BUFSIZE = 8192 bytes).
-# Back-to-back blits are safe — core0 waits on gfx_blit_busy automatically.
+# Maximum sprite size: 256x32 px (GFX_BLIT_BUFSIZE = 8192 bytes).
+# Back-to-back blits are safe - core0 waits on gfx_blit_busy automatically.
 ```
 
 ### Colour palette
@@ -221,12 +221,12 @@ The display is monochrome. Colour indices map linearly to luminance:
 
 ## Screen geometry
 
-Default video mode: **256 × 192 pixels**, PAL(ish) timing (~312 lines, 50 Hz).
+Default video mode: **256 x 192 pixels**, PAL(ish) timing (~312 lines, 50 Hz).
 Coordinate origin is top-left.
 
 ---
 
 ## Known limitations
 
-- **Queue depth** — the command ring buffer holds 64 entries. Pushing more than
+- **Queue depth** - the command ring buffer holds 64 entries. Pushing more than
   64 commands without core1 draining them will block core0 indefinitely.

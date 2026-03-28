@@ -1,5 +1,5 @@
 """
-run_sim.py — Run clock.py on Linux PC with mocked hardware modules.
+run_sim.py - Run clock.py on Linux PC with mocked hardware modules.
 
     cd pico-crt-clock
     python run_sim.py
@@ -9,12 +9,12 @@ Optional: pip install requests   (falls back to urllib if absent)
 
 What is mocked
 --------------
-gfx        → gfx.py in the same directory (pygame renderer)
-network    → always connected, SSID "SimulatedWiFi"
-ntptime    → no-op (PC clock is already correct UTC)
-urequests  → urllib.request wrapper (fetches real weather from Open-Meteo)
-time.*     → MicroPython extras: ticks_ms/diff/add, sleep_ms
-             time.localtime → time.gmtime so the manual UTC offset in clock.py
+gfx        -> gfx.py in the same directory (pygame renderer)
+network    -> always connected, SSID "SimulatedWiFi"
+ntptime    -> no-op (PC clock is already correct UTC)
+urequests  -> urllib.request wrapper (fetches real weather from Open-Meteo)
+time.*     -> MicroPython extras: ticks_ms/diff/add, sleep_ms
+             time.localtime -> time.gmtime so the manual UTC offset in clock.py
              works correctly (avoids double timezone conversion)
 """
 
@@ -25,13 +25,13 @@ import json
 import time as _time
 import urllib.request
 
-# ── ensure pico-crt-clock/ is on the path so "import gfx" finds gfx.py ───────
+# -- ensure pico-crt-clock/ is on the path so "import gfx" finds gfx.py -------
 _here = os.path.dirname(os.path.abspath(__file__))
 if _here not in sys.path:
     sys.path.insert(0, _here)
 
-# ── patch the standard 'time' module with MicroPython-compatible helpers ───────
-# clock.py applies its own UTC→local offset, so localtime must return UTC.
+# -- patch the standard 'time' module with MicroPython-compatible helpers -------
+# clock.py applies its own UTC->local offset, so localtime must return UTC.
 _time.localtime = _time.gmtime
 
 def _ticks_ms():
@@ -57,7 +57,7 @@ _time.ticks_diff = _ticks_diff
 _time.ticks_add  = _ticks_add
 _time.sleep_ms   = _sleep_ms
 
-# ── mock 'network' module ─────────────────────────────────────────────────────
+# -- mock 'network' module -----------------------------------------------------
 class _WLAN:
     def active(self, v=None):   pass
     def connect(self, ssid, pw): pass
@@ -72,12 +72,12 @@ network.STA_IF = 0
 network.WLAN   = lambda _mode: _WLAN()
 sys.modules['network'] = network
 
-# ── mock 'ntptime' module ─────────────────────────────────────────────────────
+# -- mock 'ntptime' module -----------------------------------------------------
 ntptime = types.ModuleType('ntptime')
 ntptime.settime = lambda: None   # PC clock is already set
 sys.modules['ntptime'] = ntptime
 
-# ── mock 'urequests' module ───────────────────────────────────────────────────
+# -- mock 'urequests' module ---------------------------------------------------
 class _Response:
     def __init__(self, data: bytes):
         self._data = data
@@ -96,7 +96,7 @@ urequests     = types.ModuleType('urequests')
 urequests.get = _get
 sys.modules['urequests'] = urequests
 
-# ── run clock.py ──────────────────────────────────────────────────────────────
+# -- run clock.py --------------------------------------------------------------
 os.chdir(_here)
 with open(os.path.join(_here, 'clock.py')) as f:
     code = f.read()
