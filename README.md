@@ -67,17 +67,15 @@ build and are not committed.
 
 ## Architecture
 
-```
-core0 (MicroPython)                core1 (video engine)
----------------------              --------------------
-clock.py                           initialise_cvideo()
-  +-- gfx.* calls                     PIO0 SM0  - sync  (cvideo_sync.pio)
-       +-- mod_gfx.c                   PIO0 SM1  - data  (cvideo_data.pio)
-            +-- gfx_queue (push)       DMA ch0   - sync table -> SM0 TX FIFO
-                                      DMA ch1   - bitmap row -> SM1 TX FIFO
-                    |  ring buffer    DMA_IRQ_1 - scanline handler (core1)
-                                      PIO0_IRQ_0 - pixel DMA trigger (core1)
-```
+The RP2040 has two cores. Core1 runs the pico-mposite video engine exclusively,
+generating the composite PAL signal via PIO state machines and DMA. Core0 runs
+MicroPython with a custom `gfx` C extension module (`mod_gfx.c`).
+
+When `clock.py` calls a `gfx` function, `mod_gfx.c` encodes it as a command and
+pushes it into a shared ring buffer (`gfx_queue`). Core1 loops on that queue,
+popping commands and dispatching them to the pico-mposite drawing functions
+(`gfx_core1.c`). The two cores communicate only through the queue; all video
+IRQs (`DMA_IRQ_1`, `PIO0_IRQ_0`) are owned by core1.
 
 **Key design points**
 
@@ -142,8 +140,9 @@ mpremote fs cp pico-crt-clock/icons.py   :icons.py
 mpremote fs cp pico-crt-clock/config.py  :config.py
 ```
 
-Edit `config.py` first - it contains your WiFi credentials and location
-(latitude/longitude for weather).
+Edit `config.py` first - it contains your WiFi credentials and all display
+options: location (lat/lon), timezone, DST, temperature and wind units,
+date format, and 12/24 hour clock.
 
 If you change icons, regenerate `icons.py` on the PC first:
 
