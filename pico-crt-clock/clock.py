@@ -7,29 +7,29 @@ import json
 from icons import sky_sun, sky_partly, sky_cloud, precip_drizzle, precip_rain, precip_snow, precip_thunder
 from config import WIFI_SSID, WIFI_PASS, LATITUDE, LONGITUDE, WEATHER_INTERVAL, FORECAST_NEXT_DAY_HOUR, UTC_OFFSET, USE_DST, CLOCK_12H, DATE_ORDER, DATE_SEP, TEMP_UNIT, WIND_UNIT
 
-# pico-mposite palette indices — B/W display
+# pico-mposite palette indices - B/W display
 BLACK = 0
 WHITE = 15
 
 WIFI_TIMEOUT_MS = 30000
 
 # Screen layout
-# Time  2× font (16 px/char): "HH:MM:SS" = 8×16 = 128 px  → x=(256-128)/2=64
-# Date  1× font (8 px/char):  centred dynamically (no leading zeroes, length varies)
-# Temp  2× font:              centred (up to 4 chars, e.g. "+37C")
+# Time  2x font (16 px/char): "HH:MM:SS" = 8x16 = 128 px  -> x=(256-128)/2=64
+# Date  1x font (8 px/char):  centred dynamically (no leading zeroes, length varies)
+# Temp  2x font:              centred (up to 4 chars, e.g. "+37C")
 # Forecast: 3 columns, 32 px icon width, 40 px outer margins
-#   left edges: 40, 112, 184  (40+32+40+32+40+32+40 = 256 ✓)
+#   left edges: 40, 112, 184  (40+32+40+32+40+32+40 = 256 ok)
 TIME_Y = 0
 DATE_Y         = 18
 TODAY_Y        = 40
 FORECAST_X     = [40, 112, 184]
 FORECAST_Y     = 68     # top of forecast block (day label)
-GRAYBAR_Y      = 160    # grayscale calibration bar (256×32 px)
+GRAYBAR_Y      = 160    # grayscale calibration bar (256x32 px)
 
-# Burn-in screensaver — DVD-style diagonal bounce.
-# Worst-case content width is 4 chars for both °C ("+50C") and °F ("110F" — no plus,
+# Burn-in screensaver - DVD-style diagonal bounce.
+# Worst-case content width is 4 chars for both C ("+50C") and F ("110F" - no plus,
 # since sub-zero Fahrenheit never reaches 3 digits in any realistic climate).
-#   left=24, right=232, top=0, bottom=129  →  ox ∈ [−24,+24], oy ∈ [0,63]
+#   left=24, right=232, top=0, bottom=129  ->  ox in [-24,+24], oy in [0,63]
 SS_OX_MAX = 24
 SS_OY_MAX = 63
 
@@ -127,7 +127,7 @@ def connect_wifi():
         time.sleep_ms(500)
     return None
 
-# NTP sync — needed for correct local time and daily weather refresh.
+# NTP sync - needed for correct local time and daily weather refresh.
 def sync_ntp():
     gfx.cls(BLACK)
     gfx.print_string(10, 90, "NTP sync...", BLACK, WHITE)
@@ -141,7 +141,7 @@ def sync_ntp():
 # WMO weather codes: 0=clear, 1-3=cloudy, 45/48=fog, 51-55=drizzle,
 # 61-65=rain, 71-77=snow, 80-82=showers, 85-86=snow showers, 95-99=thunder
 def _wmo_icons(code):
-    """Map WMO code → (sky_icon, precip_icon).  precip_icon may be None."""
+    """Map WMO code -> (sky_icon, precip_icon).  precip_icon may be None."""
     if code == 0:
         return sky_sun,    None
     elif code <= 1:
@@ -151,7 +151,7 @@ def _wmo_icons(code):
     elif code <= 3:
         return sky_cloud,  None
     elif code <= 48:
-        return sky_cloud,  precip_drizzle  # fog — show as fine precip
+        return sky_cloud,  precip_drizzle  # fog - show as fine precip
     elif code <= 55:
         return sky_cloud,  precip_drizzle
     elif code <= 65:
@@ -205,7 +205,7 @@ def parse_weather(data, start_day=0):
             yr  = int(date_str[0:4])
             mon = int(date_str[5:7])
             day = int(date_str[8:10])
-            # Sakamoto gives 0=Sunday; shift to DAYS index (0=Mon … 6=Sun)
+            # Sakamoto gives 0=Sunday; shift to DAYS index (0=Mon ... 6=Sun)
             day_name = DAYS[(_weekday(yr, mon, day) + 6) % 7]
             sky_ic, prc_ic = _wmo_icons(code)
             days.append((sky_ic, prc_ic, (TEMP_FMT + "{}").format(tmax, TEMP_UNIT), day_name))

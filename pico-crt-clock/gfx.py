@@ -1,5 +1,5 @@
 """
-gfx.py — PC simulator mock for the pico-crt-clock gfx C extension.
+gfx.py - PC simulator mock for the pico-crt-clock gfx C extension.
 
 Renders a 256x192 display in a pygame window with a 20-pixel border.
 Palette: 16-level grayscale, index 0=black, 15=white (matches hardware).
@@ -12,17 +12,17 @@ Run via:  cd pico-crt-clock && python run_sim.py
 import sys
 import pygame
 
-# ── display geometry ──────────────────────────────────────────────────────────
+# -- display geometry ----------------------------------------------------------
 WIDTH  = 256
 HEIGHT = 192
 BORDER = 20
 SCALE  = 3   # integer scale for visibility on modern displays
 
-# ── 16-level grayscale palette ────────────────────────────────────────────────
+# -- 16-level grayscale palette ------------------------------------------------
 PALETTE = tuple((round(i * 255 / 15),) * 3 for i in range(16))
 
-# ── ZX Spectrum 48K charset ───────────────────────────────────────────────────
-# 96 glyphs, ASCII 32–127, 8 bytes per glyph, MSB = leftmost pixel.
+# -- ZX Spectrum 48K charset ---------------------------------------------------
+# 96 glyphs, ASCII 32-127, 8 bytes per glyph, MSB = leftmost pixel.
 # Byte data taken verbatim from pico-mposite/charset.c.
 _CHARSET = bytes([
     0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,  # 32 ' '
@@ -123,9 +123,9 @@ _CHARSET = bytes([
     0x3c,0x42,0x99,0xa1,0xa1,0x99,0x42,0x3c,  # 127 DEL (Spectrum copyright symbol)
 ])
 
-# ── internal state ────────────────────────────────────────────────────────────
+# -- internal state ------------------------------------------------------------
 _screen        = None   # pygame window surface
-_surface       = None   # 256×192 logical surface
+_surface       = None   # 256x192 logical surface
 _border_colour = 0
 
 def _ensure_init():
@@ -175,10 +175,10 @@ def _draw_char(x, y, ch, bg, fg, scale=1):
                     pygame.draw.rect(_surface, colour,
                                      pygame.Rect(px, py, s, s))
 
-# ── public API (mirrors mod_gfx.c) ───────────────────────────────────────────
+# -- public API (mirrors mod_gfx.c) -------------------------------------------
 
 def usb_ready():
-    """Always False in simulation — skips USB detect loop in clock.py."""
+    """Always False in simulation - skips USB detect loop in clock.py."""
     return False
 
 def usb_disable():
@@ -197,7 +197,7 @@ def deinit():
 def cls(colour):
     # Mirror hardware behaviour: cls() waits for vblank before clearing.
     # Here we present the previous complete frame first, then clear the
-    # back buffer — no partial frames ever reach the display.
+    # back buffer - no partial frames ever reach the display.
     _ensure_init()
     _present()
     _surface.fill(PALETTE[colour & 0xF])
