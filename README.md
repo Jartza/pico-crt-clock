@@ -111,7 +111,7 @@ cd pico-crt-clock
 ```
 
 The script:
-1. Initialises MicroPython submodules (pico-sdk, tinyusb, ...)
+1. Initialises top-level submodules (micropython, pico-mposite, pico-sdk) and MicroPython's own submodules (tinyusb, ...)
 2. Applies `patches/micropython-no-thread.patch` and `patches/pico-mposite.patch`
 3. Builds `mpy-cross` if needed
 4. Runs cmake (out-of-tree into `../build-RPI_PICO_W/`), builds pioasm,
