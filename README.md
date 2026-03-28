@@ -1,7 +1,8 @@
 # pico-crt-clock
 
-MicroPython firmware for a Raspberry Pi Pico W driving a composite PAL CRT TV
-via a resistor-ladder DAC, using
+[MicroPython](https://github.com/micropython/micropython) firmware running
+on first core of a Raspberry Pi Pico W,
+driving a composite PAL CRT TV via a resistor-ladder DAC, using
 [pico-mposite](https://github.com/breakintoprogram/pico-mposite) as the video
 engine running on the second RP2040 core.
 
