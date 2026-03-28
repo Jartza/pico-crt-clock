@@ -112,7 +112,7 @@ sudo apt install gcc-arm-none-eabi cmake make git python3
 
 ## Build
 
-Both submodules are kept vanilla. `build.sh` applies the patches before
+All submodules are kept vanilla. `build.sh` applies the patches before
 building and reverts them on exit via `trap` - they are always restored even
 if the build fails.
 
