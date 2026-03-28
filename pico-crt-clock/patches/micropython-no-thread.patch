@@ -1,0 +1,21 @@
+diff --git a/ports/rp2/mpconfigport.h b/ports/rp2/mpconfigport.h
+index c8df4cdb0..e8e0eca63 100644
+--- a/ports/rp2/mpconfigport.h
++++ b/ports/rp2/mpconfigport.h
+@@ -134,10 +134,13 @@
+ // Fine control over Python builtins, classes, modules, etc
+ #define MICROPY_PY_BUILTINS_HELP_TEXT           rp2_help_text
+ #define MICROPY_PY_SYS_PLATFORM                 "rp2"
++// Threading disabled: core1 is owned by the gfx video engine.
++// multicore_lockout_victim_init() (called by mp_thread_init when threading
++// is enabled) installs an ISR on SIO_IRQ_PROC0 that consumes the FIFO
++// acknowledgement multicore_launch_core1() blocks on, hanging core0 and
++// killing USB.
+ #ifndef MICROPY_PY_THREAD
+-#define MICROPY_PY_THREAD                       (1)
+-#define MICROPY_PY_THREAD_GIL                   (0)
+-#define MICROPY_THREAD_YIELD()                  mp_handle_pending(MP_HANDLE_PENDING_CALLBACKS_AND_EXCEPTIONS)
++#define MICROPY_PY_THREAD                       (0)
+ #endif
+
+ // Extended modules

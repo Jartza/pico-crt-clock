@@ -1,0 +1,4 @@
+# Out-of-tree cmake build output
+build-*/
+CLAUDE.md
+.claude/
