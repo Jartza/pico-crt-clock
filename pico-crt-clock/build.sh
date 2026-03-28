@@ -43,8 +43,9 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# -- 1. initialise micropython submodules (pico-sdk, tinyusb, etc.) ------------
-echo "Initialising MicroPython submodules..."
+# -- 1. initialise submodules --------------------------------------------------
+echo "Initialising submodules..."
+git -C "$ROOT" submodule update --init
 make -C "$MP_PORT" BOARD=$BOARD submodules
 
 # -- 2. apply patches ----------------------------------------------------------
