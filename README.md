@@ -44,7 +44,7 @@ pico-crt-clock/           project sources; build from here
   gfx_core1.c               core1 entry point and command dispatcher
   gfx_core1.h               gfx_core1_launch() declaration
   mod_gfx.c                 MicroPython C extension module "gfx"
-  main.py                   boot stub: USB detection → REPL or clock
+  main.py                   boot stub: imports clock, catches SystemExit
   clock.py                  clock/weather application logic
   config.py                 WiFi credentials, location, display options
   icons.py                  pre-generated weather icon bytearrays
@@ -99,12 +99,6 @@ clock.py                           initialise_cvideo()
 - Back-to-back `gfx.blit()` calls are safe: core0 spins on `gfx_blit_busy`
   until core1 has consumed the previous sprite, then copies the next one.
 
-**USB and video cannot coexist.** pico-mposite's GP0–GP4 switching disrupts USB
-at the hardware level. `main.py` detects USB enumeration at boot:
-
-- PC connected → stay in REPL (mpremote / Thonny work normally).
-- Standalone power → `gfx.usb_disable()` then start video.
-
 ---
 
 ## Build
@@ -139,8 +133,7 @@ cp build-RPI_PICO_W/firmware.uf2 /media/$USER/RPI-RP2/
 
 ### Deploy Python files
 
-After the Pico reboots, connect to PC (USB detection gives a 4-second window
-to stay in REPL):
+After the Pico reboots, connect to PC:
 
 ```bash
 mpremote fs cp pico-crt-clock/main.py    :main.py
@@ -180,8 +173,6 @@ Set `SCALE` in `gfx.py` to resize the window (default 3×).
 import gfx
 
 # Lifecycle
-gfx.usb_ready()                         # True if a USB host has enumerated us
-gfx.usb_disable()                       # Remove D+ pull-up (standalone mode)
 gfx.init()                              # Launch core1 video engine (call once)
 gfx.deinit()                            # Stop video engine; core1 parks in WFE
 
@@ -228,25 +219,6 @@ The display is monochrome. Colour indices map linearly to luminance:
 
 ---
 
-## Boot behaviour
-
-`main.py` polls `gfx.usb_ready()` for up to 4 seconds at startup:
-
-```
-Power on
-  │
-  ├─ USB host enumerates within 4 s ──► REPL mode
-  │                                     (video engine never started,
-  │                                      mpremote / Thonny work normally)
-  │
-  └─ Timeout (wall charger / standalone) ──► Video mode
-                                             gfx.usb_disable()
-                                             gfx.init()
-                                             clock.py main loop
-```
-
----
-
 ## Screen geometry
 
 Default video mode: **256 × 192 pixels**, PAL(ish) timing (~312 lines, 50 Hz).
@@ -256,7 +228,5 @@ Coordinate origin is top-left.
 
 ## Known limitations
 
-- **USB and video cannot coexist** — pico-mposite's GPIO switching disrupts USB
-  at the hardware level. Boot mode detection is the workaround.
 - **Queue depth** — the command ring buffer holds 64 entries. Pushing more than
   64 commands without core1 draining them will block core0 indefinitely.
