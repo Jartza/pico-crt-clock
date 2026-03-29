@@ -34,3 +34,6 @@ TEMP_UNIT = "C"
 
 # Wind speed unit: "ms" (m/s), "kmh" (km/h), "mph", "kn" (knots)
 WIND_UNIT = "ms"
+
+# Screen saver speed: 0 = fastest, 20 = move screen 1px/1px once per second
+SCREENSAVER_SPEED = 1

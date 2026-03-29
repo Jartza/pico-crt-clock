@@ -5,7 +5,7 @@ import ntptime
 import urequests
 import json
 from icons import sky_sun, sky_partly, sky_cloud, precip_drizzle, precip_rain, precip_snow, precip_thunder
-from config import WIFI_SSID, WIFI_PASS, LATITUDE, LONGITUDE, WEATHER_INTERVAL, FORECAST_NEXT_DAY_HOUR, UTC_OFFSET, USE_DST, CLOCK_12H, DATE_ORDER, DATE_SEP, TEMP_UNIT, WIND_UNIT
+from config import WIFI_SSID, WIFI_PASS, LATITUDE, LONGITUDE, WEATHER_INTERVAL, FORECAST_NEXT_DAY_HOUR, UTC_OFFSET, USE_DST, CLOCK_12H, DATE_ORDER, DATE_SEP, TEMP_UNIT, WIND_UNIT, SCREENSAVER_SPEED
 
 # pico-mposite palette indices - B/W display
 BLACK = 0
@@ -294,7 +294,7 @@ while True:
         last_start_day   = start_day
 
     # Advance screensaver and redraw every 300 ms
-    if time.ticks_diff(time.ticks_ms(), last_move) >= 300:
+    if time.ticks_diff(time.ticks_ms(), last_move) >= (SCREENSAVER_SPEED * 50):
         last_move = time.ticks_ms()
         ox += vx
         oy += vy
@@ -309,4 +309,4 @@ while True:
         last_sec = s
         draw_all(time_str, date_str, cur_temp, wind_speed, weather, ox, oy)
 
-    time.sleep_ms(50)
+    time.sleep_ms(25)
