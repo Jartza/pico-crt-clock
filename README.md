@@ -18,7 +18,7 @@ key required).
 |---|---|
 | ![Clock running on a small CRT TV](img/small_crt.jpg) | ![PC simulator screenshot](img/sim_screen.png) |
 
-[![Video clip of the clock in action](https://img.youtube.com/vi/jS2PVJlSefM/maxresdefault.jpg)](https://youtu.be/jS2PVJlSefM)
+https://github.com/user-attachments/assets/1162584c-b029-4f1c-9379-bf67870d685d
 
 ---
 
