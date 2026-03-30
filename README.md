@@ -32,6 +32,27 @@ The Python API uses palette indices **0 (black) ... 15 (white)**; the `gfx` modu
 adds `colour_base = 0x10` before writing to the framebuffer so pixel values never
 reach sync level.
 
+> **Note:** The R-2R ladder DAC works for a first test but has two practical
+> shortcomings when used with a real composite display:
+>
+> - **Output impedance mismatch.** The ladder presents roughly 110 Ω to the
+>   display's 75 Ω input, forming a voltage divider that reduces signal
+>   amplitude and shifts all levels — sync, black, and white — away from the
+>   composite video standard.
+> - **No drive capability.** Without a buffer the ladder cannot properly source
+>   current into a 75 Ω terminated input, which distorts levels further.
+>
+> Two branches address these issues with different hardware approaches:
+>
+> | Branch | Hardware | What it changes |
+> |---|---|---|
+> | [`blanking_test`](../../tree/blanking_test) | R-2R ladder + 2SC1815 emitter follower buffer | Corrected colour LUT compensates for level shift; emitter follower provides low output impedance to drive 75 Ω loads |
+> | [`summing_amp_test`](../../tree/summing_amp_test) | Weighted resistor summing network + THS7314 video amplifier | Balanced resistor weights give correct DAC linearity; THS7314 provides proper 75 Ω impedance-matched output at correct composite amplitude |
+>
+> `summing_amp_test` is the recommended approach for a clean, standards-correct
+> composite output. `blanking_test` is useful if you only have the basic ladder
+> and want better results without additional ICs.
+
 ---
 
 ## Repository layout
