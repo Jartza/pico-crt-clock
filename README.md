@@ -12,6 +12,16 @@ key required).
 
 ---
 
+## Gallery
+
+| CRT display | PC simulator |
+|---|---|
+| ![Clock running on a small CRT TV](img/small_crt.jpg) | ![PC simulator screenshot](img/sim_screen.png) |
+
+[Video clip of the clock in action](img/small_crt.mp4)
+
+---
+
 ## Hardware
 
 | Item | Detail |
