@@ -307,6 +307,6 @@ while True:
         elif oy <= 0:
             oy = 0;          vy =  1
         last_sec = s
-        draw_all(time_str, date_str, cur_temp, wind_speed, weather, ox, oy)
 
-    time.sleep_ms(25)
+    draw_all(time_str, date_str, cur_temp, wind_speed, weather, ox, oy)
+    time.sleep_ms(10)
