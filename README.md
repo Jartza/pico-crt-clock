@@ -42,12 +42,17 @@ reach sync level.
 > - **No drive capability.** Without a buffer the ladder cannot properly source
 >   current into a 75 Ω terminated input, which distorts levels further.
 >
-> Two branches address these issues with different hardware approaches:
+ Two branches address these issues with different hardware approaches:
 >
-> | Branch | Hardware | What it changes |
+> | Branch | Hardware | Code changes |
 > |---|---|---|
-> | [`blanking_test`](../../tree/blanking_test) | R-2R ladder + 2SC1815 emitter follower buffer | Corrected colour LUT compensates for level shift; emitter follower provides low output impedance to drive 75 Ω loads |
-> | [`summing_amp_test`](../../tree/summing_amp_test) | Weighted resistor summing network + THS7314 video amplifier | Balanced resistor weights give correct DAC linearity; THS7314 provides proper 75 Ω impedance-matched output at correct composite amplitude |
+> | [`blanking_test`](../../tree/blanking_test) | R-2R ladder + 2SC1815 emitter follower buffer | Corrected colour LUT that compensates for the level shift caused by the ladder's output impedance |
+> | [`summing_amp_test`](../../tree/summing_amp_test) | Weighted resistor summing network + THS7314 video amplifier | Back porch level (HSHI) set to 0x10 to match `colour_base`, giving consistent black level |
+>
+> **Each branch contains firmware changes tuned specifically for its hardware.
+> You must build and flash the firmware from the same branch as the hardware
+> you have built. Mixing hardware from one branch with firmware from another
+> will result in incorrect signal levels.**
 >
 > `summing_amp_test` is the recommended approach for a clean, standards-correct
 > composite output. `blanking_test` is useful if you only have the basic ladder
