@@ -191,6 +191,11 @@ Edit `config.py` first - it contains your WiFi credentials and all display
 options: location (lat/lon), timezone, DST, temperature and wind units,
 date format, and 12/24 hour clock.
 
+To find your coordinates, right-click your location in
+[Google Maps](https://maps.google.com) and click the latitude/longitude
+that appears at the top of the context menu — it copies to the clipboard.
+Alternatively use [latlong.net](https://www.latlong.net).
+
 If you change icons, regenerate `icons.py` on the PC first:
 
 ```bash
