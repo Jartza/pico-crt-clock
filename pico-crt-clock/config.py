@@ -12,7 +12,7 @@ UTC_OFFSET = 2
 USE_DST = True
 
 # Location for weather - Open-Meteo uses decimal degrees
-LATITUDE  = 60.22   # Ikkala, Lohja, Finland (adjust as needed)
+LATITUDE  = 60.22   # Replace with your own coordinates
 LONGITUDE = 24.03
 
 # How often to refresh weather data (seconds)
