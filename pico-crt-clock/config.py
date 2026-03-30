@@ -36,4 +36,5 @@ TEMP_UNIT = "C"
 WIND_UNIT = "ms"
 
 # Screen saver speed: 0 = fastest, 20 = move screen 1px/1px once per second
-SCREENSAVER_SPEED = 1
+# 999 = disabled (never move the screen)
+SCREENSAVER_SPEED = 2

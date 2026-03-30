@@ -293,8 +293,9 @@ while True:
         last_weather_ts  = now
         last_start_day   = start_day
 
-    # Advance screensaver and redraw every 300 ms
-    if time.ticks_diff(time.ticks_ms(), last_move) >= (SCREENSAVER_SPEED * 50):
+    # Advance screensaver position every SCREENSAVER_SPEED*50 ms (e.g. 100 ms for speed=2).
+    # or disable movement if SCREENSAVER_SPEED is 999 or more.
+    if SCREENSAVER_SPEED < 999 and time.ticks_diff(time.ticks_ms(), last_move) >= (SCREENSAVER_SPEED * 50):
         last_move = time.ticks_ms()
         ox += vx
         oy += vy
