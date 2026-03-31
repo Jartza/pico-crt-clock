@@ -53,9 +53,9 @@ firmware with `./build.sh <variant>`.
 
 ### Ladder (basic)
 
-The simplest option: five resistors on GP0–GP4 form an R-2R ladder DAC. See
-[pico-mposite wiring](https://github.com/breakintoprogram/pico-mposite/blob/main/hardware/pcb/schematic/Pico-mposite.pdf)
-for the resistor values and connections.
+The simplest option: five resistors on GP0–GP4 form an R-2R ladder DAC.
+
+![R-2R ladder DAC schematic](img/ladder.png)
 
 | Value | Meaning |
 |---|---|
@@ -71,10 +71,11 @@ correct signal levels.
 
 ### Ladder + buffer (`buffer`)
 
-Adds a 2SC1815 NPN emitter follower between the ladder output and the
-display. The buffer lowers the output impedance to approximately 75 Ω.
-A corrected 16-entry colour LUT in the firmware compensates for the
-remaining level shift caused by the ladder's output impedance.
+Build the ladder above, then add a 2SC1815 NPN emitter follower between the
+ladder output and the display. The buffer lowers the output impedance to
+approximately 75 Ω. A corrected 16-entry colour LUT in the firmware
+compensates for the remaining level shift caused by the ladder's output
+impedance.
 
 ![Video buffer schematic](img/vidbuf.png)
 
