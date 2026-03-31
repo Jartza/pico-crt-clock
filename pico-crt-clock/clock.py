@@ -4,7 +4,7 @@ import network
 import ntptime
 import urequests
 import json
-from icons import sky_sun, sky_partly, sky_cloud, precip_drizzle, precip_rain, precip_snow, precip_thunder
+from icons import sky_sun, sky_partly, sky_cloud, precip_drizzle, precip_rain, precip_snow, precip_thunder, precip_fog
 from config import WIFI_SSID, WIFI_PASS, LATITUDE, LONGITUDE, WEATHER_INTERVAL, FORECAST_NEXT_DAY_HOUR, UTC_OFFSET, USE_DST, CLOCK_12H, DATE_ORDER, DATE_SEP, TEMP_UNIT, WIND_UNIT, SCREENSAVER_SPEED
 
 # pico-mposite palette indices - B/W display
@@ -140,30 +140,41 @@ def sync_ntp():
 # Weather - Open-Meteo, no API key needed
 # WMO weather codes: 0=clear, 1-3=cloudy, 45/48=fog, 51-55=drizzle,
 # 61-65=rain, 71-77=snow, 80-82=showers, 85-86=snow showers, 95-99=thunder
-def _wmo_icons(code):
-    """Map WMO code -> (sky_icon, precip_icon).  precip_icon may be None."""
-    if code == 0:
-        return sky_sun,    None
-    elif code <= 1:
-        return sky_sun,    None
-    elif code <= 2:
-        return sky_partly, None
-    elif code <= 3:
-        return sky_cloud,  None
-    elif code <= 48:
-        return sky_cloud,  precip_drizzle  # fog - show as fine precip
-    elif code <= 55:
-        return sky_cloud,  precip_drizzle
-    elif code <= 65:
-        return sky_cloud,  precip_rain
-    elif code <= 77:
-        return sky_cloud,  precip_snow
-    elif code <= 82:
-        return sky_cloud,  precip_rain
-    elif code <= 86:
-        return sky_cloud,  precip_snow
+def _day_icons(wmo_code, sunshine_s, daylight_s, precip_sum_mm):
+    """Derive (sky_icon, precip_icon) from daily aggregates.
+    Sky is based on sunshine fraction (physics-based, not worst-case WMO code).
+    Precip type comes from WMO code; visibility is gated by actual precip_sum."""
+    # Sky icon: sunshine fraction of daylight hours
+    if daylight_s and daylight_s > 0:
+        sun_frac = sunshine_s / daylight_s
     else:
-        return sky_cloud,  precip_thunder   # thunderstorm
+        sun_frac = 0.0          # polar night guard
+    if sun_frac >= 0.5:
+        sky_ic = sky_sun
+    elif sun_frac >= 0.15:
+        sky_ic = sky_partly
+    else:
+        sky_ic = sky_cloud
+
+    # Precip icon: type from WMO code, visibility gated by actual sum
+    if wmo_code >= 95:
+        prc_ic = precip_thunder              # always show thunderstorm
+    elif wmo_code in range(71, 78) or wmo_code in (85, 86):
+        prc_ic = precip_snow    if precip_sum_mm >= 0.5 else None
+    elif wmo_code in range(51, 56):
+        prc_ic = precip_drizzle if precip_sum_mm >= 0.3 else None
+    elif wmo_code in range(61, 66) or wmo_code in (80, 81, 82):
+        prc_ic = precip_rain    if precip_sum_mm >= 1.0 else None
+    elif wmo_code in (45, 48):
+        prc_ic = precip_fog
+    else:
+        prc_ic = None           # clear, partly cloudy, etc.
+
+    # Don't show sun + rain: downgrade sky to partly if precip is present
+    if prc_ic is not None and sky_ic == sky_sun:
+        sky_ic = sky_partly
+
+    return sky_ic, prc_ic
 
 def fetch_weather(show_msg=False):
     if show_msg:
@@ -173,7 +184,7 @@ def fetch_weather(show_msg=False):
         "https://api.open-meteo.com/v1/forecast"
         "?latitude={}&longitude={}"
         "&current=temperature_2m,weather_code,wind_speed_10m"
-        "&daily=weather_code,temperature_2m_max"
+        "&daily=weather_code,temperature_2m_max,sunshine_duration,daylight_duration,precipitation_sum"
         "&forecast_days=7&timezone=auto"
         "&temperature_unit={}&wind_speed_unit={}"
     ).format(LATITUDE, LONGITUDE,
@@ -207,7 +218,10 @@ def parse_weather(data, start_day=0):
             day = int(date_str[8:10])
             # Sakamoto gives 0=Sunday; shift to DAYS index (0=Mon ... 6=Sun)
             day_name = DAYS[(_weekday(yr, mon, day) + 6) % 7]
-            sky_ic, prc_ic = _wmo_icons(code)
+            sunshine_s = daily['sunshine_duration'][i]
+            daylight_s = daily['daylight_duration'][i]
+            precip_mm  = daily['precipitation_sum'][i]
+            sky_ic, prc_ic = _day_icons(code, sunshine_s, daylight_s, precip_mm)
             days.append((sky_ic, prc_ic, (TEMP_FMT + "{}").format(tmax, TEMP_UNIT), day_name))
         return cur_temp, wind_speed, days
     except Exception:
