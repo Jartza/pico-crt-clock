@@ -57,9 +57,17 @@ case "$VARIANT" in
     *) echo "Error: unknown variant '$VARIANT'"; usage ;;
 esac
 
-PATCH_PM="$SCRIPT_DIR/patches/pico-mposite-${VARIANT}.patch"
 BUILD_DIR="$ROOT/build-$BOARD-$VARIANT"
 PIOASM="$BUILD_DIR/pioasm/pioasm"
+
+# pico-mposite patches: common applies to all variants; variant patch (if any)
+# applies on top and carries only the colour handling / HSHI differences.
+PATCH_PM_COMMON="$SCRIPT_DIR/patches/pico-mposite-common.patch"
+PATCH_PM_VARIANT=""
+case "$VARIANT" in
+    buffer) PATCH_PM_VARIANT="$SCRIPT_DIR/patches/pico-mposite-buffer.patch" ;;
+    amp)    PATCH_PM_VARIANT="$SCRIPT_DIR/patches/pico-mposite-amp.patch"    ;;
+esac
 
 # cmake extra flags for variants that need them
 CMAKE_EXTRA=""
@@ -87,7 +95,9 @@ revert_patch() {
 cleanup() {
     echo "Reverting patches to restore vanilla submodules..."
     revert_patch "$ROOT/micropython" "$PATCH_MP"
-    revert_patch "$ROOT/pico-mposite" "$PATCH_PM"
+    # Revert variant before common (reverse application order)
+    [ -n "$PATCH_PM_VARIANT" ] && revert_patch "$ROOT/pico-mposite" "$PATCH_PM_VARIANT"
+    revert_patch "$ROOT/pico-mposite" "$PATCH_PM_COMMON"
 }
 trap cleanup EXIT
 
@@ -99,7 +109,8 @@ make -C "$MP_PORT" BOARD=$BOARD submodules
 # -- 2. apply patches ----------------------------------------------------------
 echo "Applying patches (variant: $VARIANT)..."
 apply_patch "$ROOT/micropython" "$PATCH_MP"
-apply_patch "$ROOT/pico-mposite" "$PATCH_PM"
+apply_patch "$ROOT/pico-mposite" "$PATCH_PM_COMMON"
+[ -n "$PATCH_PM_VARIANT" ] && apply_patch "$ROOT/pico-mposite" "$PATCH_PM_VARIANT"
 
 # -- 3. build mpy-cross if needed ----------------------------------------------
 if [ ! -f "$ROOT/micropython/mpy-cross/build/mpy-cross" ]; then

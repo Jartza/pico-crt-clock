@@ -147,10 +147,10 @@ pico-crt-clock/           project sources; build from here
   gfx.py                    PC simulator mock of the gfx C extension (pygame)
   run_sim.py                runner for PC testing without hardware
   patches/
-    micropython-no-thread.patch       disables MicroPython threading (see below)
-    pico-mposite-ladder.patch         pico-mposite patch for the plain ladder variant
-    pico-mposite-buffer.patch         pico-mposite patch for the ladder + buffer variant
-    pico-mposite-amp.patch            pico-mposite patch for the summing amp variant
+    micropython-no-thread.patch   disables MicroPython threading (see below)
+    pico-mposite-common.patch     pico-mposite patch applied to all variants (DMA IRQ, FIFO, SRAM, GPIO drive, deinit)
+    pico-mposite-buffer.patch     additional patch for buffer variant (HSHI + colour LUT)
+    pico-mposite-amp.patch        additional patch for amp variant (HSHI only)
 
 micropython/          vanilla MicroPython (submodule)
 pico-mposite/         vanilla pico-mposite (submodule)
@@ -178,12 +178,14 @@ IRQs (`DMA_IRQ_1`, `PIO0_IRQ_0`) are owned by core1.
 
 - All video IRQs (`DMA_IRQ_1`, `PIO0_IRQ_0`) are registered from core1 so they
   fire on core1's NVIC and cannot affect core0 interrupt latency.
-- `patches/pico-mposite-<variant>.patch` redirects DMA from `DMA_IRQ_0` to
+- `patches/pico-mposite-common.patch` redirects DMA from `DMA_IRQ_0` to
   `DMA_IRQ_1` (avoiding conflict with MicroPython's shared DMA_IRQ_0 handler),
   adds `FJOIN_TX` to double the TX FIFO depth on both PIO SMs, places ISRs in
   SRAM with `__not_in_flash_func`, sets GP0-GP4 drive strength to 2 mA / slow
-  slew to reduce switching noise, adds `deinit_cvideo()`, and sets the back
-  porch blanking level (HSHI) to the correct value for the chosen variant.
+  slew to reduce switching noise, and adds `deinit_cvideo()`. Applied first for
+  all variants. The variant-specific patches (`pico-mposite-buffer.patch`,
+  `pico-mposite-amp.patch`) apply on top and carry only the HSHI value and
+  colour LUT changes specific to that hardware.
 - `patches/micropython-no-thread.patch` sets `MICROPY_PY_THREAD = 0`; the
   threading ISR on `SIO_IRQ_PROC0` would consume the FIFO acknowledgement that
   `multicore_launch_core1()` blocks on, hanging core0.
@@ -227,7 +229,7 @@ Running `./build.sh` without an argument prints a usage summary and exits.
 
 The script:
 1. Initialises top-level submodules (micropython, pico-mposite, pico-sdk) and MicroPython's own submodules (tinyusb, ...)
-2. Applies `patches/micropython-no-thread.patch` and `patches/pico-mposite-<variant>.patch`
+2. Applies `patches/micropython-no-thread.patch`, `patches/pico-mposite-common.patch`, and (for `buffer`/`amp`) the variant-specific patch on top
 3. Builds `mpy-cross` if needed
 4. Runs cmake (out-of-tree into `../build-RPI_PICO_W-<variant>/`), builds pioasm,
    generates `cvideo_sync.pio.h` / `cvideo_data.pio.h`
