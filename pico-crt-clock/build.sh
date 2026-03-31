@@ -2,20 +2,68 @@
 # build.sh - out-of-tree firmware build with patch/revert for vanilla submodules.
 # Patches are applied before the build and reverted on exit (success or failure).
 # Run from anywhere; paths are relative to this script's location.
+#
+# Usage: ./build.sh <variant>
+#
+#   ladder   Plain R-2R resistor ladder DAC (for basic testing; not 75 Ω matched)
+#   buffer   R-2R ladder + 2SC1815 emitter follower buffer
+#   amp      Weighted resistor summing network + THS7314 video amplifier (recommended)
+#
+# See README.md for hardware schematics and component values for each variant.
+# You MUST build and flash the firmware that matches your hardware.
 
 set -e
+
+usage() {
+    cat <<'EOF'
+
+Usage: ./build.sh <variant>
+
+  ladder   Plain R-2R resistor ladder DAC
+             No extra components beyond the 5 resistors.
+             Works for initial testing but output is not 75 Ω matched.
+
+  buffer   R-2R ladder + 2SC1815 emitter follower buffer
+             Adds a transistor buffer between the ladder and the display.
+             Better impedance match; corrected colour LUT for accurate levels.
+
+  amp      Weighted resistor summing network + THS7314 video amplifier
+             Recommended for clean, standards-correct composite output.
+             Fixed 2x gain compensates for 75 Ω source/load divider loss.
+
+See README.md for full hardware schematics and component lists.
+
+WARNING: The firmware is calibrated for its hardware variant.
+         Flashing the wrong variant will produce incorrect signal levels.
+
+EOF
+    exit 1
+}
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(dirname "$SCRIPT_DIR")"
 MP_PORT="$ROOT/micropython/ports/rp2"
 BOARD=RPI_PICO_W
-BUILD_DIR="$ROOT/build-$BOARD"
 MODULE_CMAKE="$SCRIPT_DIR/micropython.cmake"
-PIOASM="$BUILD_DIR/pioasm/pioasm"
 PIO_SRC="$ROOT/pico-mposite"
 
 PATCH_MP="$SCRIPT_DIR/patches/micropython-no-thread.patch"
-PATCH_PM="$SCRIPT_DIR/patches/pico-mposite.patch"
+
+# -- validate variant ----------------------------------------------------------
+VARIANT="${1:-}"
+case "$VARIANT" in
+    ladder|buffer|amp) ;;
+    "") usage ;;
+    *) echo "Error: unknown variant '$VARIANT'"; usage ;;
+esac
+
+PATCH_PM="$SCRIPT_DIR/patches/pico-mposite-${VARIANT}.patch"
+BUILD_DIR="$ROOT/build-$BOARD-$VARIANT"
+PIOASM="$BUILD_DIR/pioasm/pioasm"
+
+# cmake extra flags for variants that need them
+CMAKE_EXTRA=""
+[ "$VARIANT" = "buffer" ] && CMAKE_EXTRA="-DUSE_COLOUR_LUT=1"
 
 # -- patch helpers --------------------------------------------------------------
 apply_patch() {
@@ -49,7 +97,7 @@ git -C "$ROOT" submodule update --init
 make -C "$MP_PORT" BOARD=$BOARD submodules
 
 # -- 2. apply patches ----------------------------------------------------------
-echo "Applying patches..."
+echo "Applying patches (variant: $VARIANT)..."
 apply_patch "$ROOT/micropython" "$PATCH_MP"
 apply_patch "$ROOT/pico-mposite" "$PATCH_PM"
 
@@ -61,12 +109,13 @@ fi
 
 # -- 4. cmake configure + pioasm -----------------------------------------------
 if [ ! -f "$PIOASM" ]; then
-    echo "Configuring cmake (build dir: $BUILD_DIR)..."
+    echo "Configuring cmake (build dir: $BUILD_DIR, variant: $VARIANT)..."
     cmake -S "$MP_PORT" -B "$BUILD_DIR" \
         -DPICO_BUILD_DOCS=0 \
         -DMICROPY_BOARD=$BOARD \
         -DUSER_C_MODULES="$MODULE_CMAKE" \
-        -DMICROPY_C_HEAP_SIZE=65536
+        -DMICROPY_C_HEAP_SIZE=65536 \
+        $CMAKE_EXTRA
 
     echo "Building pioasm..."
     make -C "$BUILD_DIR" pioasmBuild
@@ -77,11 +126,14 @@ echo "Generating PIO headers..."
 "$PIOASM" "$PIO_SRC/cvideo_data.pio" "$SCRIPT_DIR/cvideo_data.pio.h"
 
 # -- 5. build firmware ---------------------------------------------------------
-echo "Building MicroPython firmware with gfx module..."
+echo "Building MicroPython firmware with gfx module (variant: $VARIANT)..."
 make -C "$BUILD_DIR" -j$(nproc)
 
 echo ""
 echo "Done! Firmware at: $BUILD_DIR/firmware.uf2"
+echo ""
+echo "WARNING: This firmware is built for the '$VARIANT' hardware variant."
+echo "         Flash it only to a Pico running the matching hardware."
 echo ""
 echo "Flash with:"
 echo "  cp $BUILD_DIR/firmware.uf2 /media/\$USER/RPI-RP2/"

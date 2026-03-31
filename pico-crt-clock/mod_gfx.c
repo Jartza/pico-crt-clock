@@ -27,11 +27,17 @@
 #include "gfx_core1.h"
 #include "hardware/structs/usb.h"   // usb_hw, USB_SIE_CTRL_PULLUP_EN_BITS
 #include "config.h"                 // opt_colour
+#ifdef USE_COLOUR_LUT
+#include "hardware/pio.h"           // required by cvideo.h
+#include "hardware/irq.h"           // required by cvideo.h
+#include "cvideo.h"                 // colour_lut[]
+#else
 // colour_base mirrors the definition in cvideo.h
 #if opt_colour == 0
 #define colour_base 0x10
 #else
 #define colour_base 0x00
+#endif
 #endif
 
 // ── gfx.usb_ready() ──────────────────────────────────────────────────────────
@@ -265,11 +271,15 @@ static mp_obj_t gfx_blit(size_t n, const mp_obj_t *a) {
     // __wfe() avoids burning cycles — core1 does __sev() after clearing the flag.
     while (gfx_blit_busy) { __wfe(); }
 
-    // Copy sprite pixels into the shared buffer (add colour_base offset here so
-    // core1 never has to touch raw palette indices).
+    // Copy sprite pixels into the shared buffer, mapping palette indices to DAC
+    // values so core1 never has to touch raw palette indices.
     const uint8_t *src = (const uint8_t *)bi.buf;
     for (size_t i = 0; i < sz; i++) {
+#ifdef USE_COLOUR_LUT
+        gfx_blit_buf[i] = colour_lut[src[i] & 15];
+#else
         gfx_blit_buf[i] = src[i] + colour_base;
+#endif
     }
     __dmb();            // pixel copy must be visible before busy flag and CMD_BLIT
 

@@ -21,13 +21,18 @@ volatile bool        gfx_deinit_done = false;
 // Renders one glyph at 2× scale (16×16 px) by writing 2×2 pixel blocks
 // directly to the bitmap.  Uses the Spectrum 48K charset (96 glyphs from
 // ASCII 32, 8 bytes per glyph, MSB = leftmost pixel).
-// colour_base and bitmap/width/height are all provided by cvideo.h.
+// bitmap/width/height are all provided by cvideo.h.
 static void print_char_2x(int x, int y, unsigned char c,
                            unsigned char bc, unsigned char fc) {
     if (c < 32 || c > 127) c = 32;
     const unsigned char *glyph = &charset[(c - 32) * 8];
+#ifdef USE_COLOUR_LUT
+    unsigned char bg = colour_lut[bc & 15];
+    unsigned char fg = colour_lut[fc & 15];
+#else
     unsigned char bg = colour_base + bc;
     unsigned char fg = colour_base + fc;
+#endif
     for (int row = 0; row < 8; row++) {
         unsigned char bits = glyph[row];
         int py = y + row * 2;

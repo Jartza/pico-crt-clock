@@ -28,45 +28,104 @@ https://github.com/user-attachments/assets/1162584c-b029-4f1c-9379-bf67870d685d
 |---|---|
 | MCU board | Raspberry Pi Pico W (WiFi used for NTP and weather) |
 | Display | Any TV or monitor accepting a composite PAL signal |
-| DAC | R-2R resistor ladder on GP0-GP4, see [pico-mposite for wiring](https://github.com/breakintoprogram/pico-mposite/blob/main/hardware/pcb/schematic/Pico-mposite.pdf) |
+| DAC | See [Video output options](#video-output-options) below |
 
-The DAC maps a 5-bit value to a voltage level:
+The firmware maps palette indices **0 (black) ... 15 (white)** to 5-bit DAC
+values. The exact mapping depends on the hardware variant — see below.
+
+> **Important:** The firmware is calibrated for the hardware variant it was
+> built for. Build with `./build.sh <variant>` and flash only to a Pico
+> running the matching hardware. Mismatching firmware and hardware will produce
+> incorrect signal levels.
+
+---
+
+## Video output options
+
+Three hardware variants are supported. Choose one and build the matching
+firmware with `./build.sh <variant>`.
+
+| Variant | `build.sh` arg | Hardware | Notes |
+|---|---|---|---|
+| Ladder | `ladder` | R-2R resistor ladder only | Simple; not 75 Ω matched — for initial testing |
+| Ladder + buffer | `buffer` | R-2R ladder + 2SC1815 emitter follower | Better impedance match; software LUT corrects levels |
+| Summing amp | `amp` | Weighted resistor network + THS7314 | Recommended; clean, standards-correct output |
+
+### Ladder (basic)
+
+The simplest option: five resistors on GP0–GP4 form an R-2R ladder DAC. See
+[pico-mposite wiring](https://github.com/breakintoprogram/pico-mposite/blob/main/hardware/pcb/schematic/Pico-mposite.pdf)
+for the resistor values and connections.
 
 | Value | Meaning |
 |---|---|
 | 0x00 | Sync tip |
-| 0x10 | Black (blanking level) |
+| 0x0D | Black (blanking level) |
 | 0x1F | White (peak luminance) |
 
-The Python API uses palette indices **0 (black) ... 15 (white)**; the `gfx` module
-adds `colour_base = 0x10` before writing to the framebuffer so pixel values never
-reach sync level.
+The ladder presents roughly 110 Ω output impedance. Real composite inputs
+terminate at 75 Ω, so connecting the ladder directly creates a voltage divider
+that shifts and attenuates all levels. This is fine for a quick smoke-test
+but will look wrong on a real display. Use the `buffer` or `amp` variant for
+correct signal levels.
 
-> **Note:** The R-2R ladder DAC works for a first test but has two practical
-> shortcomings when used with a real composite display:
->
-> - **Output impedance mismatch.** The ladder presents roughly 110 Ω to the
->   display's 75 Ω input, forming a voltage divider that reduces signal
->   amplitude and shifts all levels — sync, black, and white — away from the
->   composite video standard.
-> - **No drive capability.** Without a buffer the ladder cannot properly source
->   current into a 75 Ω terminated input, which distorts levels further.
->
- Two branches address these issues with different hardware approaches:
->
-> | Branch | Hardware | Code changes |
-> |---|---|---|
-> | [`blanking_test`](../../tree/blanking_test) | R-2R ladder + 2SC1815 emitter follower buffer | Corrected colour LUT that compensates for the level shift caused by the ladder's output impedance |
-> | [`summing_amp_test`](../../tree/summing_amp_test) | Weighted resistor summing network + THS7314 video amplifier | Back porch level (HSHI) set to 0x10 to match `colour_base`, giving consistent black level |
->
-> **Each branch contains firmware changes tuned specifically for its hardware.
-> You must build and flash the firmware from the same branch as the hardware
-> you have built. Mixing hardware from one branch with firmware from another
-> will result in incorrect signal levels.**
->
-> `summing_amp_test` is the recommended approach for a clean, standards-correct
-> composite output. `blanking_test` is useful if you only have the basic ladder
-> and want better results without additional ICs.
+### Ladder + buffer (`buffer`)
+
+Adds a 2SC1815 NPN emitter follower between the ladder output and the
+display. The buffer lowers the output impedance to approximately 75 Ω.
+A corrected 16-entry colour LUT in the firmware compensates for the
+remaining level shift caused by the ladder's output impedance.
+
+![Video buffer schematic](img/vidbuf.png)
+
+| Part | Value | Function |
+|---|---|---|
+| C2 | 1 µF | AC-couples the DAC signal into the base bias network |
+| R11 | 10 kΩ | Pull-up to 3V3; sets base bias with R12 |
+| R12 | 10 kΩ | Pull-down to GND; sets base bias midpoint |
+| Q2 | 2SC1815 | NPN emitter follower; unity voltage gain, low output impedance |
+| R13 | 68 Ω | Emitter resistor; sets the operating point to ~15 mA emitter current |
+| C3 | 220–470 µF | AC output coupling cap; **330 µF minimum** — 220 µF may give a soft picture |
+
+| Value | Meaning |
+|---|---|
+| 0x01 | Sync tip |
+| 0x0B | Black (blanking level) |
+| 0x1F | White (peak luminance) |
+
+### Summing amp — recommended (`amp`)
+
+A weighted resistor network sums the 5-bit GPIO output into a voltage, which
+a THS7314 video amplifier IC drives onto the composite output at correct
+amplitude and 75 Ω impedance. No LUT correction needed — the back porch level
+is set to exactly `colour_base` (0x10) in firmware.
+
+![THS7314 video amplifier schematic](img/video_amp.png)
+
+| Part | Value | Function |
+|---|---|---|
+| R1 | 100 kΩ | GPIO0 (LSB) summing resistor |
+| R2 | 47 kΩ | GPIO1 summing resistor |
+| R3 | 24 kΩ | GPIO2 summing resistor |
+| R4 | 12 kΩ | GPIO3 summing resistor |
+| R5 | 15 kΩ | GPIO4 (MSB) summing resistor |
+| R6 | 2 kΩ | Shunt resistor; converts summed current to voltage at CH1.IN |
+| U1 | THS7314 | Triple SD video amplifier; fixed 2× gain; drives 75 Ω loads |
+| R7 | 75 Ω | Series output resistor; forms 75 Ω source impedance with U1 |
+| C1 | 330–470 µF | AC output coupling cap to composite connector |
+| C2 | 100 nF | Supply bypass cap on VS+ |
+
+The THS7314 fixed 2× gain compensates for the 6 dB loss of the 75 Ω
+source/load divider, so the signal arrives at the display at correct composite
+amplitude. Most CRT TVs and composite monitors have built-in 75 Ω termination;
+if yours does not, add a 75 Ω resistor from the connector to ground at the
+display end.
+
+| Value | Meaning |
+|---|---|
+| 0x01 | Sync tip |
+| 0x10 | Black (blanking level) |
+| 0x1F | White (peak luminance) |
 
 ---
 
@@ -88,8 +147,10 @@ pico-crt-clock/           project sources; build from here
   gfx.py                    PC simulator mock of the gfx C extension (pygame)
   run_sim.py                runner for PC testing without hardware
   patches/
-    micropython-no-thread.patch   disables MicroPython threading (see below)
-    pico-mposite.patch            patches cvideo.c and cvideo.h (see below)
+    micropython-no-thread.patch       disables MicroPython threading (see below)
+    pico-mposite-ladder.patch         pico-mposite patch for the plain ladder variant
+    pico-mposite-buffer.patch         pico-mposite patch for the ladder + buffer variant
+    pico-mposite-amp.patch            pico-mposite patch for the summing amp variant
 
 micropython/          vanilla MicroPython (submodule)
 pico-mposite/         vanilla pico-mposite (submodule)
@@ -117,11 +178,12 @@ IRQs (`DMA_IRQ_1`, `PIO0_IRQ_0`) are owned by core1.
 
 - All video IRQs (`DMA_IRQ_1`, `PIO0_IRQ_0`) are registered from core1 so they
   fire on core1's NVIC and cannot affect core0 interrupt latency.
-- `patches/pico-mposite.patch` redirects DMA from `DMA_IRQ_0` to `DMA_IRQ_1`
-  (avoiding conflict with MicroPython's shared DMA_IRQ_0 handler), adds
-  `FJOIN_TX` to double the TX FIFO depth on both PIO SMs, places ISRs in SRAM
-  with `__not_in_flash_func`, sets GP0-GP4 drive strength to 2 mA / slow slew
-  to reduce switching noise, and adds `deinit_cvideo()`.
+- `patches/pico-mposite-<variant>.patch` redirects DMA from `DMA_IRQ_0` to
+  `DMA_IRQ_1` (avoiding conflict with MicroPython's shared DMA_IRQ_0 handler),
+  adds `FJOIN_TX` to double the TX FIFO depth on both PIO SMs, places ISRs in
+  SRAM with `__not_in_flash_func`, sets GP0-GP4 drive strength to 2 mA / slow
+  slew to reduce switching noise, adds `deinit_cvideo()`, and sets the back
+  porch blanking level (HSHI) to the correct value for the chosen variant.
 - `patches/micropython-no-thread.patch` sets `MICROPY_PY_THREAD = 0`; the
   threading ISR on `SIO_IRQ_PROC0` would consume the FIFO acknowledgement that
   `multicore_launch_core1()` blocks on, hanging core0.
@@ -149,31 +211,40 @@ sudo apt install gcc-arm-none-eabi cmake make git python3
 ## Build
 
 All submodules are kept vanilla. `build.sh` applies the patches before
-building and reverts them on exit via `trap` - they are always restored even
+building and reverts them on exit via `trap` — they are always restored even
 if the build fails.
+
+Pass the hardware variant as the first argument:
 
 ```bash
 cd pico-crt-clock
-./build.sh
+./build.sh ladder   # plain R-2R ladder
+./build.sh buffer   # ladder + 2SC1815 emitter follower buffer
+./build.sh amp      # weighted summing network + THS7314 (recommended)
 ```
+
+Running `./build.sh` without an argument prints a usage summary and exits.
 
 The script:
 1. Initialises top-level submodules (micropython, pico-mposite, pico-sdk) and MicroPython's own submodules (tinyusb, ...)
-2. Applies `patches/micropython-no-thread.patch` and `patches/pico-mposite.patch`
+2. Applies `patches/micropython-no-thread.patch` and `patches/pico-mposite-<variant>.patch`
 3. Builds `mpy-cross` if needed
-4. Runs cmake (out-of-tree into `../build-RPI_PICO_W/`), builds pioasm,
+4. Runs cmake (out-of-tree into `../build-RPI_PICO_W-<variant>/`), builds pioasm,
    generates `cvideo_sync.pio.h` / `cvideo_data.pio.h`
 5. Builds the full firmware with the `gfx` user C module
 6. Reverts both patches (via `trap EXIT`)
 
-Output: `build-RPI_PICO_W/firmware.uf2`
+Each variant gets its own build directory, so you can build all three without
+a clean in between.
+
+Output: `build-RPI_PICO_W-<variant>/firmware.uf2`
 
 ### Flash
 
-Hold BOOTSEL, plug in USB, release. Then:
+Hold BOOTSEL, plug in USB, release. Then (example for `amp`):
 
 ```bash
-cp build-RPI_PICO_W/firmware.uf2 /media/$USER/RPI-RP2/
+cp build-RPI_PICO_W-amp/firmware.uf2 /media/$USER/RPI-RP2/
 ```
 
 ### Deploy Python files
