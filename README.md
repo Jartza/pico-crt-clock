@@ -53,7 +53,7 @@ firmware with `./build.sh <variant>`.
 
 ### Ladder (basic)
 
-The simplest option: five resistors on GP0–GP4 form an R-2R ladder DAC.
+The simplest option: eleven resistors on GP0–GP4 form an R-2R ladder DAC.
 
 ![R-2R ladder DAC schematic](img/ladder.png)
 
