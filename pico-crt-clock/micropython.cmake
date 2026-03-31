@@ -50,5 +50,10 @@ set_source_files_properties(
     PROPERTIES COMPILE_OPTIONS "-Wno-unused-variable;-Wno-maybe-uninitialized"
 )
 
+# Propagate variant-specific compile definitions (set by build.sh via cmake -D)
+if(USE_COLOUR_LUT)
+    target_compile_definitions(usermod_gfx INTERFACE USE_COLOUR_LUT=1)
+endif()
+
 # Wire into the MicroPython usermod target
 target_link_libraries(usermod INTERFACE usermod_gfx)
