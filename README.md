@@ -6,9 +6,12 @@ driving a composite PAL CRT TV via a resistor-ladder DAC, using
 [pico-mposite](https://github.com/breakintoprogram/pico-mposite) as the video
 engine running on the second RP2040 core.
 
-Displays a live clock, current temperature and wind speed, and a 3-day weather
-forecast with icons, fetched from [Open-Meteo](https://open-meteo.com) (no API
-key required).
+The `gfx` MicroPython module provides a general-purpose API for composite
+video output — pixel drawing, text, sprites, and screen control — usable for
+any MicroPython project that needs a B/W composite display. `clock.py` is the
+bundled example application: it displays a live clock, current temperature and
+wind speed, and a 3-day weather forecast with icons, fetched from
+[Open-Meteo](https://open-meteo.com) (no API key required).
 
 ---
 
@@ -290,6 +293,30 @@ python run_sim.py
 `gfx.py` is a pygame-based mock of the `gfx` C extension. Network calls are
 always-connected mocks; weather is fetched live from Open-Meteo.
 Set `SCALE` in `gfx.py` to resize the window (default 3x).
+
+---
+
+## Using gfx for your own project
+
+The firmware is not specific to the clock application. To run your own
+MicroPython script with composite video output, replace `main.py` on the Pico
+with a file that calls `gfx.init()` and uses the `gfx` API. `clock.py` can be
+left on the filesystem or removed — it is only imported by `main.py`.
+
+```python
+import gfx
+
+gfx.init()
+gfx.cls(0)
+gfx.print_string_2x(32, 88, "Hello!", 0, 15)
+
+while True:
+    pass
+```
+
+The PC simulator (`gfx.py` + `run_sim.py`) works the same way — modify
+`run_sim.py` to import your script instead of `clock`, and it runs on the
+desktop without hardware.
 
 ---
 
