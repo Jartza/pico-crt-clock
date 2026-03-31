@@ -73,9 +73,10 @@ correct signal levels.
 
 Build the ladder above, then add a 2SC1815 NPN emitter follower between the
 ladder output and the display. The buffer lowers the output impedance to
-approximately 75 Ω. A corrected 16-entry colour LUT in the firmware
-compensates for the remaining level shift caused by the ladder's output
-impedance.
+approximately 75 Ω. A corrected 16-entry colour LUT in the firmware maps
+palette indices to DAC values that place the black level at the composite
+standard (~300 mV), since the R-2R ladder output is linear and does not
+inherently land at the correct voltage.
 
 ![Video buffer schematic](img/vidbuf.png)
 
