@@ -1,0 +1,13 @@
+diff --git a/cvideo.h b/cvideo.h
+index 92353fc..63eb9e6 100644
+--- a/cvideo.h
++++ b/cvideo.h
+@@ -29,7 +29,7 @@
+     #define colour_base 0x10    // Start colour; for monochrome version this relates to black level voltage
+     #define colour_max  0x0f    // Last available colour
+     #define HSLO        0x0001
+-    #define HSHI        0x000d
++    #define HSHI        0x0010
+     #define VSLO        HSLO
+     #define VSHI        HSHI
+     #define BORD        0x8000
