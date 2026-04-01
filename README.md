@@ -156,6 +156,7 @@ pico-crt-clock/           project sources; build from here
     pico-mposite-common.patch     pico-mposite patch applied to all variants (DMA IRQ, FIFO, SRAM, GPIO drive, deinit)
     pico-mposite-buffer.patch     additional patch for buffer variant (HSHI + colour LUT)
     pico-mposite-amp.patch        additional patch for amp variant (HSHI only)
+    pico-mposite-fix-scanline-order.patch  fixes y=0 rendering at bottom instead of top (applied to all variants)
     pico-mposite-c64font.patch    optional: replaces ZX Spectrum font with Commodore 64 font
 
 micropython/          vanilla MicroPython (submodule)
@@ -192,6 +193,13 @@ IRQs (`DMA_IRQ_1`, `PIO0_IRQ_0`) are owned by core1.
   all variants. The variant-specific patches (`pico-mposite-buffer.patch`,
   `pico-mposite-amp.patch`) apply on top and carry only the HSHI value and
   colour LUT changes specific to that hardware.
+- `patches/pico-mposite-fix-scanline-order.patch` fixes a bug in
+  `cvideo_dma_handler` where the NULL-source pixel DMA started by
+  `initialise_cvideo` leaves stale bytes in the PIO TX FIFO, causing a one-line
+  pipeline slip: `bitmap[0]` (y=0) ends up on the last active scanline (bottom)
+  instead of the first (top). Fix: split `case 6 ... 68` and at vline 68 (last
+  top-border line, one scan period before active video) reset `bline` and preload
+  `dma_channel_1` with `bitmap[0]`. Applied to all variants.
 - `patches/micropython-no-thread.patch` sets `MICROPY_PY_THREAD = 0`; the
   threading ISR on `SIO_IRQ_PROC0` would consume the FIFO acknowledgement that
   `multicore_launch_core1()` blocks on, hanging core0.
@@ -241,7 +249,7 @@ Spectrum and C64 font builds can coexist without a clean in between.
 
 The script:
 1. Initialises top-level submodules (micropython, pico-mposite, pico-sdk) and MicroPython's own submodules (tinyusb, ...)
-2. Applies `patches/micropython-no-thread.patch`, `patches/pico-mposite-common.patch`, and (for `buffer`/`amp`) the variant-specific patch on top; if `--c64font` is given, also applies `patches/pico-mposite-c64font.patch`
+2. Applies `patches/micropython-no-thread.patch`, `patches/pico-mposite-common.patch`, `patches/pico-mposite-fix-scanline-order.patch`, and (for `buffer`/`amp`) the variant-specific patch on top; if `--c64font` is given, also applies `patches/pico-mposite-c64font.patch`
 3. Builds `mpy-cross` if needed
 4. Runs cmake (out-of-tree into `../build-RPI_PICO_W-<variant>/` or `../build-RPI_PICO_W-<variant>-c64font/`), builds pioasm, generates `cvideo_sync.pio.h` / `cvideo_data.pio.h`
 5. Builds the full firmware with the `gfx` user C module
