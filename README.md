@@ -156,6 +156,7 @@ pico-crt-clock/           project sources; build from here
     pico-mposite-common.patch     pico-mposite patch applied to all variants (DMA IRQ, FIFO, SRAM, GPIO drive, deinit)
     pico-mposite-buffer.patch     additional patch for buffer variant (HSHI + colour LUT)
     pico-mposite-amp.patch        additional patch for amp variant (HSHI only)
+    pico-mposite-c64font.patch    optional: replaces ZX Spectrum font with Commodore 64 font
 
 micropython/          vanilla MicroPython (submodule)
 pico-mposite/         vanilla pico-mposite (submodule)
@@ -221,25 +222,30 @@ All submodules are kept vanilla. `build.sh` applies the patches before
 building and reverts them on exit via `trap` — they are always restored even
 if the build fails.
 
-Pass the hardware variant as the first argument:
+Pass the hardware variant as the first argument, with an optional font flag:
 
 ```bash
 cd pico-crt-clock
-./build.sh ladder   # plain R-2R ladder
-./build.sh buffer   # ladder + 2SC1815 emitter follower buffer
-./build.sh amp      # weighted summing network + THS7314 (recommended)
+./build.sh ladder              # plain R-2R ladder, ZX Spectrum font (default)
+./build.sh buffer              # ladder + 2SC1815 emitter follower buffer
+./build.sh amp                 # weighted summing network + THS7314 (recommended)
+./build.sh amp --c64font       # same, but with Commodore 64 font
 ```
 
 Running `./build.sh` without an argument prints a usage summary and exits.
 
+The `--c64font` flag replaces the default ZX Spectrum 48K character set with
+the Commodore 64 font (lowercase+uppercase ROM set — both cases supported).
+It uses a separate build directory (`build-RPI_PICO_W-<variant>-c64font/`) so
+Spectrum and C64 font builds can coexist without a clean in between.
+
 The script:
 1. Initialises top-level submodules (micropython, pico-mposite, pico-sdk) and MicroPython's own submodules (tinyusb, ...)
-2. Applies `patches/micropython-no-thread.patch`, `patches/pico-mposite-common.patch`, and (for `buffer`/`amp`) the variant-specific patch on top
+2. Applies `patches/micropython-no-thread.patch`, `patches/pico-mposite-common.patch`, and (for `buffer`/`amp`) the variant-specific patch on top; if `--c64font` is given, also applies `patches/pico-mposite-c64font.patch`
 3. Builds `mpy-cross` if needed
-4. Runs cmake (out-of-tree into `../build-RPI_PICO_W-<variant>/`), builds pioasm,
-   generates `cvideo_sync.pio.h` / `cvideo_data.pio.h`
+4. Runs cmake (out-of-tree into `../build-RPI_PICO_W-<variant>/` or `../build-RPI_PICO_W-<variant>-c64font/`), builds pioasm, generates `cvideo_sync.pio.h` / `cvideo_data.pio.h`
 5. Builds the full firmware with the `gfx` user C module
-6. Reverts both patches (via `trap EXIT`)
+6. Reverts all patches (via `trap EXIT`)
 
 Each variant gets its own build directory, so you can build all three without
 a clean in between.
@@ -287,12 +293,17 @@ cd pico-crt-clock && python make_icons.py
 ```bash
 cd pico-crt-clock
 pip install pygame   # one-time
-python run_sim.py
+python run_sim.py             # ZX Spectrum font (default)
+python run_sim.py --c64font   # Commodore 64 font
 ```
 
 `gfx.py` is a pygame-based mock of the `gfx` C extension. Network calls are
 always-connected mocks; weather is fetched live from Open-Meteo.
 Set `SCALE` in `gfx.py` to resize the window (default 3x).
+
+The `--c64font` flag selects the Commodore 64 lowercase+uppercase character set
+in the simulator, matching what `./build.sh <variant> --c64font` builds into
+the firmware. The window title shows which font is active.
 
 ---
 
