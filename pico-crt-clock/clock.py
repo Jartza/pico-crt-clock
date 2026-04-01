@@ -4,8 +4,8 @@ import network
 import ntptime
 import urequests
 import json
-from icons import sky_sun, sky_partly, sky_cloud, precip_drizzle, precip_rain, precip_snow, precip_thunder, precip_fog
-from config import WIFI_SSID, WIFI_PASS, LATITUDE, LONGITUDE, WEATHER_INTERVAL, FORECAST_NEXT_DAY_HOUR, UTC_OFFSET, USE_DST, CLOCK_12H, DATE_ORDER, DATE_SEP, TEMP_UNIT, WIND_UNIT, SCREENSAVER_SPEED
+from icons import *
+from config import *
 
 # pico-mposite palette indices - B/W display
 BLACK = 0
@@ -254,7 +254,9 @@ wind_speed = None
 weather    = [(sky_cloud, None, "---", "---")] * 3   # shown if first fetch fails
 
 _boot_t  = time.time()
-_boot_h  = time.localtime(_boot_t + _utc_offset(_boot_t))[3]
+_boot_lt = time.localtime(_boot_t + _utc_offset(_boot_t))
+_boot_h  = _boot_lt[3]
+_boot_day = _boot_lt[2]
 raw = fetch_weather(show_msg=True)
 ct, ws, days = parse_weather(raw, 1 if _boot_h >= FORECAST_NEXT_DAY_HOUR else 0)
 if days:
@@ -268,7 +270,7 @@ last_weather_ts = time.time()
 # frame. cls() does wait for vblank, so there is no flicker as the drawing usually
 # finishes before the next field starts.
 last_sec       = -1
-last_day       = -1
+last_day       = _boot_day
 last_start_day = 1 if _boot_h >= FORECAST_NEXT_DAY_HOUR else 0
 last_move      = time.ticks_ms()
 ox, oy     = 0, 0
@@ -288,10 +290,9 @@ while True:
     _dp = {'D': str(day), 'M': str(mon), 'Y': str(yr)}
     date_str = DATE_SEP.join(_dp[c] for c in DATE_ORDER)
 
-    # Day change: trigger weather refresh and silent NTP re-sync for RTC drift
+    # Day change: trigger silent NTP re-sync for RTC drift
     if day != last_day:
         last_day = day
-        last_weather_ts = now - WEATHER_INTERVAL
         try:
             ntptime.settime()
         except Exception:
