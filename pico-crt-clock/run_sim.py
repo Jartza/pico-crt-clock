@@ -2,7 +2,11 @@
 run_sim.py - Run clock.py on Linux PC with mocked hardware modules.
 
     cd pico-crt-clock
-    python run_sim.py
+    python run_sim.py [--c64font]
+
+Options:
+  --c64font   Use the Commodore 64 font instead of the default ZX Spectrum font.
+              Sets GFX_FONT=c64 for gfx.py to pick up at import time.
 
 Requires: pip install pygame
 Optional: pip install requests   (falls back to urllib if absent)
@@ -20,6 +24,11 @@ time.*     -> MicroPython extras: ticks_ms/diff/add, sleep_ms
 
 import sys
 import os
+
+# -- handle --c64font before any other imports so gfx.py sees the env var ------
+if '--c64font' in sys.argv:
+    os.environ['GFX_FONT'] = 'c64'
+    sys.argv.remove('--c64font')
 import types
 import json
 import time as _time

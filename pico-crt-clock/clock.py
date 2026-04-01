@@ -96,7 +96,7 @@ def draw_all(time_str, date_str, cur_temp, wind_speed, weather_days, ox=0, oy=0)
         gfx.print_string_2x(tx, TODAY_Y + oy, ts, BLACK, WHITE)
         bx0 = tx - 3
         bx1 = tx + len(ts) * 16 + 3
-        by0 = TODAY_Y + oy - 3
+        by0 = TODAY_Y + oy - 5
         by1 = TODAY_Y + oy + 19
         gfx.line(bx0, by0, bx1, by0, WHITE)   # top
         gfx.line(bx0, by1, bx1, by1, WHITE)   # bottom
