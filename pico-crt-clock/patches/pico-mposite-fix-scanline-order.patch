@@ -1,7 +1,7 @@
 diff --git a/cvideo.c b/cvideo.c
 --- a/cvideo.c
 +++ b/cvideo.c
-@@ -279,10 +279,15 @@
+@@ -279,10 +279,14 @@
  
          // Then the border scanlines
          //
@@ -10,10 +10,9 @@ diff --git a/cvideo.c b/cvideo.c
          case 261 ... 309:
              dma_channel_set_read_addr(dma_channel_0, border, true);
              break;
-+        case 68:    // Last top-border line: preload pixel DMA with bitmap[0] so y=0 is at the top
++        case 68:    // Last top-border line: re-anchor bline so bitmap[0] is at top
 +            dma_channel_set_read_addr(dma_channel_0, border, true);
 +            bline = 1;
-+            dma_channel_set_read_addr(dma_channel_1, bitmap, true);
 +            break;
  
          // Now point the dma at the first buffer for the pixel data,
