@@ -140,10 +140,11 @@ def sync_ntp():
 # Weather - Open-Meteo, no API key needed
 # WMO weather codes: 0=clear, 1-3=cloudy, 45/48=fog, 51-55=drizzle,
 # 61-65=rain, 71-77=snow, 80-82=showers, 85-86=snow showers, 95-99=thunder
-def _day_icons(wmo_code, sunshine_s, daylight_s, precip_sum_mm):
+def _day_icons(wmo_code, sunshine_s, daylight_s, precip_sum_mm, precip_prob):
     """Derive (sky_icon, precip_icon) from daily aggregates.
     Sky is based on sunshine fraction (physics-based, not worst-case WMO code).
-    Precip type comes from WMO code; visibility is gated by actual precip_sum."""
+    Precip type comes from WMO code; visibility is gated by both precip_sum
+    and precipitation_probability_mean (both thresholds must be met)."""
     # Sky icon: sunshine fraction of daylight hours
     if daylight_s and daylight_s > 0:
         sun_frac = sunshine_s / daylight_s
@@ -156,15 +157,15 @@ def _day_icons(wmo_code, sunshine_s, daylight_s, precip_sum_mm):
     else:
         sky_ic = sky_cloud
 
-    # Precip icon: type from WMO code, visibility gated by actual sum
+    # Precip icon: type from WMO code, visibility gated by actual sum AND probability
     if wmo_code >= 95:
         prc_ic = precip_thunder              # always show thunderstorm
     elif wmo_code in range(71, 78) or wmo_code in (85, 86):
-        prc_ic = precip_snow    if precip_sum_mm >= 0.5 else None
+        prc_ic = precip_snow    if precip_sum_mm >= 0.5 and precip_prob >= 30 else None
     elif wmo_code in range(51, 56):
-        prc_ic = precip_drizzle if precip_sum_mm >= 0.3 else None
+        prc_ic = precip_drizzle if precip_sum_mm >= 0.3 and precip_prob >= 25 else None
     elif wmo_code in range(61, 66) or wmo_code in (80, 81, 82):
-        prc_ic = precip_rain    if precip_sum_mm >= 1.0 else None
+        prc_ic = precip_rain    if precip_sum_mm >= 1.0 and precip_prob >= 35 else None
     elif wmo_code in (45, 48):
         prc_ic = precip_fog
     else:
@@ -184,14 +185,14 @@ def fetch_weather(show_msg=False):
         "https://api.open-meteo.com/v1/forecast"
         "?latitude={}&longitude={}"
         "&current=temperature_2m,weather_code,wind_speed_10m"
-        "&daily=weather_code,temperature_2m_max,sunshine_duration,daylight_duration,precipitation_sum"
+        "&daily=weather_code,temperature_2m_max,sunshine_duration,daylight_duration,precipitation_sum,precipitation_probability_mean"
         "&forecast_days=7&timezone=auto"
         "&temperature_unit={}&wind_speed_unit={}"
     ).format(LATITUDE, LONGITUDE,
              "fahrenheit" if TEMP_UNIT == "F" else "celsius",
              WIND_UNIT)
     try:
-        r = urequests.get(url, timeout=20)
+        r = urequests.get(url, timeout=30)
         data = r.json()
         r.close()
         return data
@@ -221,7 +222,8 @@ def parse_weather(data, start_day=0):
             sunshine_s = daily['sunshine_duration'][i]
             daylight_s = daily['daylight_duration'][i]
             precip_mm  = daily['precipitation_sum'][i]
-            sky_ic, prc_ic = _day_icons(code, sunshine_s, daylight_s, precip_mm)
+            precip_prob = daily['precipitation_probability_mean'][i]
+            sky_ic, prc_ic = _day_icons(code, sunshine_s, daylight_s, precip_mm, precip_prob)
             days.append((sky_ic, prc_ic, (TEMP_FMT + "{}").format(tmax, TEMP_UNIT), day_name))
         return cur_temp, wind_speed, days
     except Exception:
