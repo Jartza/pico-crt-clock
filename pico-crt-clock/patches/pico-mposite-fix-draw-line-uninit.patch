@@ -1,0 +1,10 @@
+diff --git a/graphics.c b/graphics.c
+--- a/graphics.c
++++ b/graphics.c
+@@ -114,5 +114,5 @@
+ 
+     if(dx == 0 && dy == 0) {        // For zero length lines
+-        plot(xp, yp, c);            // Just plot a point
++        plot(x1, y1, c);            // Just plot a point
+         return;
+     }

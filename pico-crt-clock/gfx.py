@@ -252,6 +252,12 @@ def _ensure_init():
     _surface.fill(PALETTE[0])
     _present()
 
+_key_queue = []
+
+def get_key():
+    """Return next pending key code or None. Simulator only — not present on hardware."""
+    return _key_queue.pop(0) if _key_queue else None
+
 def _pump():
     if not pygame.get_init():
         return
@@ -259,6 +265,8 @@ def _pump():
         if ev.type == pygame.QUIT:
             pygame.quit()
             sys.exit(0)
+        elif ev.type == pygame.KEYDOWN:
+            _key_queue.append(ev.key)
 
 def _present():
     _pump()

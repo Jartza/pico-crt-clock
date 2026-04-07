@@ -85,6 +85,7 @@ PIOASM="$BUILD_DIR/pioasm/pioasm"
 # Font patch is independent of both and can be combined with any variant.
 PATCH_PM_COMMON="$SCRIPT_DIR/patches/pico-mposite-common.patch"
 PATCH_PM_SCANLINE="$SCRIPT_DIR/patches/pico-mposite-fix-scanline-order.patch"
+PATCH_PM_DRAWLINE="$SCRIPT_DIR/patches/pico-mposite-fix-draw-line-uninit.patch"
 PATCH_PM_VARIANT=""
 case "$VARIANT" in
     buffer) PATCH_PM_VARIANT="$SCRIPT_DIR/patches/pico-mposite-buffer.patch" ;;
@@ -124,6 +125,7 @@ cleanup() {
     [ -n "$PATCH_PM_FONT" ]    && revert_patch "$ROOT/pico-mposite" "$PATCH_PM_FONT"
     [ -n "$PATCH_PM_VARIANT" ] && revert_patch "$ROOT/pico-mposite" "$PATCH_PM_VARIANT"
     revert_patch "$ROOT/pico-mposite" "$PATCH_PM_SCANLINE"
+    revert_patch "$ROOT/pico-mposite" "$PATCH_PM_DRAWLINE"
     revert_patch "$ROOT/pico-mposite" "$PATCH_PM_COMMON"
 }
 trap cleanup EXIT
@@ -139,6 +141,7 @@ FONT_LABEL=""
 echo "Applying patches (variant: $VARIANT$FONT_LABEL)..."
 apply_patch "$ROOT/micropython" "$PATCH_MP"
 apply_patch "$ROOT/pico-mposite" "$PATCH_PM_COMMON"
+apply_patch "$ROOT/pico-mposite" "$PATCH_PM_DRAWLINE"
 apply_patch "$ROOT/pico-mposite" "$PATCH_PM_SCANLINE"
 [ -n "$PATCH_PM_VARIANT" ] && apply_patch "$ROOT/pico-mposite" "$PATCH_PM_VARIANT"
 [ -n "$PATCH_PM_FONT" ]    && apply_patch "$ROOT/pico-mposite" "$PATCH_PM_FONT"
@@ -156,7 +159,7 @@ if [ ! -f "$PIOASM" ]; then
         -DPICO_BUILD_DOCS=0 \
         -DMICROPY_BOARD=$BOARD \
         -DUSER_C_MODULES="$MODULE_CMAKE" \
-        -DMICROPY_C_HEAP_SIZE=98304 \
+        -DMICROPY_C_HEAP_SIZE=114688 \
         $CMAKE_EXTRA
 
     echo "Building pioasm..."
