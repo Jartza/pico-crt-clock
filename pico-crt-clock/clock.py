@@ -258,7 +258,7 @@ _boot_lt = time.localtime(_boot_t + _utc_offset(_boot_t))
 _boot_h  = _boot_lt[3]
 _boot_day = _boot_lt[2]
 raw = fetch_weather(show_msg=True)
-ct, ws, days = parse_weather(raw, 1 if _boot_h >= FORECAST_NEXT_DAY_HOUR else 0)
+ct, ws, days = parse_weather(raw, 1 if FORECAST_NEXT_DAY_HOUR > 0 and _boot_h >= FORECAST_NEXT_DAY_HOUR else 0)
 if days:
     cur_temp   = ct
     wind_speed = ws
@@ -271,7 +271,7 @@ last_weather_ts = time.time()
 # finishes before the next field starts.
 last_sec       = -1
 last_day       = _boot_day
-last_start_day = 1 if _boot_h >= FORECAST_NEXT_DAY_HOUR else 0
+last_start_day = 1 if FORECAST_NEXT_DAY_HOUR > 0 and _boot_h >= FORECAST_NEXT_DAY_HOUR else 0
 last_move      = time.ticks_ms()
 ox, oy     = 0, 0
 vx, vy     = 1, 1     # start moving right + down; oy is clamped to [0, SS_OY_MAX]
@@ -298,9 +298,10 @@ while True:
         except Exception:
             pass
 
-    # Periodic weather refresh
-    start_day = 1 if h >= FORECAST_NEXT_DAY_HOUR else 0
-    if now - last_weather_ts >= WEATHER_INTERVAL or start_day != last_start_day:
+    # Periodic weather refresh; retry every 30 s if no data yet, else WEATHER_INTERVAL
+    start_day = 1 if FORECAST_NEXT_DAY_HOUR > 0 and h >= FORECAST_NEXT_DAY_HOUR else 0
+    _wi = 30 if cur_temp is None else WEATHER_INTERVAL
+    if now - last_weather_ts >= _wi or start_day != last_start_day:
         raw = fetch_weather()
         ct, ws, days = parse_weather(raw, start_day)
         if days:            # keep old data on failure

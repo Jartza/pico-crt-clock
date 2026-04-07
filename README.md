@@ -375,7 +375,7 @@ gfx.blit(buf, sw, sh, dx, dy)
 # dx   - destination X on screen
 # dy   - destination Y on screen
 # gfx.blit() adds colour_base (0x10) automatically.
-# Maximum sprite size: 256x32 px (GFX_BLIT_BUFSIZE = 8192 bytes).
+# Maximum sprite size: 64x64 px (GFX_BLIT_BUFSIZE = 4096 bytes).
 # Back-to-back blits are safe - core0 waits on gfx_blit_busy automatically.
 ```
 
@@ -393,8 +393,14 @@ The display is monochrome. Colour indices map linearly to luminance:
 
 ## Screen geometry
 
-Default video mode: **256 x 192 pixels**, PAL(ish) timing (~312 lines, 50 Hz).
+Fixed video mode: **256 x 192 pixels**, PAL(ish) timing (~312 lines, 50 Hz).
 Coordinate origin is top-left.
+
+The resolution is intentionally fixed and the sprite blit buffer is capped at
+4096 bytes (64×64 px). The RP2040 has 264 KB of SRAM total; the CYW43 WiFi
+driver and the MicroPython GC heap together consume the bulk of it, leaving no
+headroom for larger framebuffer modes or a bigger static blit buffer without
+crowding out Python scripts.
 
 ---
 

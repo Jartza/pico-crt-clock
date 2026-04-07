@@ -8,7 +8,7 @@
 
 // ── tunables ────────────────────────────────────────────────────────────────
 #define GFX_QUEUE_SIZE   64          // must be power-of-2 for the mask trick
-#define GFX_BLIT_BUFSIZE (256 * 32) // max sprite: full-width 256×32 px grayscale bar
+#define GFX_BLIT_BUFSIZE (64 * 64)  // max sprite: 64×64 px
 #define GFX_STR_MAXLEN   64
 
 // ── command type ────────────────────────────────────────────────────────────
