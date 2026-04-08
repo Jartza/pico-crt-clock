@@ -4,8 +4,20 @@ import network
 import ntptime
 import urequests
 import json
-from icons import *
 from config import *
+
+with open('icons.bin', 'rb') as _f:
+    _icons = _f.read()
+_iv = memoryview(_icons)
+sky_sun        = _iv[0*512:1*512]
+sky_partly     = _iv[1*512:2*512]
+sky_cloud      = _iv[2*512:3*512]
+precip_rain    = _iv[3*512:4*512]
+precip_snow    = _iv[4*512:5*512]
+precip_drizzle = _iv[5*512:6*512]
+precip_thunder = _iv[6*512:7*512]
+precip_fog     = _iv[7*512:8*512]
+del _f, _iv
 
 # pico-mposite palette indices - B/W display
 BLACK = 0
