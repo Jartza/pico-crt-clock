@@ -184,7 +184,8 @@ def fetch_weather(show_msg=False):
     url = (
         "https://api.open-meteo.com/v1/forecast"
         "?latitude={}&longitude={}"
-        "&current=temperature_2m,weather_code,wind_speed_10m"
+        "&current=weather_code,wind_speed_10m"
+        "&hourly=temperature_2m"
         "&daily=weather_code,temperature_2m_max,sunshine_duration,daylight_duration,precipitation_sum,precipitation_probability_mean"
         "&forecast_days=7&timezone=auto"
         "&temperature_unit={}&wind_speed_unit={}"
@@ -205,7 +206,7 @@ def parse_weather(data, start_day=0):
     if data is None:
         return None, None, None
     try:
-        cur_temp   = round(data['current']['temperature_2m'])
+        cur_temp   = round(data['hourly']['temperature_2m'][time.localtime()[3]])
         wind_speed = round(data['current']['wind_speed_10m'])
         daily      = data['daily']
         days = []
