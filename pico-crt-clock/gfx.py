@@ -11,9 +11,28 @@ Requires: pip install pygame
 Run via:  cd pico-crt-clock && python run_sim.py [--c64font]
 """
 
+import builtins
 import os
 import sys
 import pygame
+
+# Stub out @micropython.viper / @micropython.native and viper intrinsics
+# (ptr32, ptr16, ptr8) so application code runs unmodified on PC.
+class _MicropythonStub:
+    viper  = staticmethod(lambda f: f)
+    native = staticmethod(lambda f: f)
+builtins.micropython = _MicropythonStub()
+
+class _Ptr:
+    """Identity wrapper — makes ptr32(arr)[i] work as plain array access on PC."""
+    __slots__ = ('_a',)
+    def __init__(self, a):       self._a = a
+    def __getitem__(self, i):    return self._a[i]
+    def __setitem__(self, i, v): self._a[i] = v
+
+builtins.ptr32 = _Ptr
+builtins.ptr16 = _Ptr
+builtins.ptr8  = _Ptr
 
 # -- display geometry ----------------------------------------------------------
 WIDTH  = 256
