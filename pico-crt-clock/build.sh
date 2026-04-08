@@ -159,7 +159,7 @@ if [ ! -f "$PIOASM" ]; then
         -DPICO_BUILD_DOCS=0 \
         -DMICROPY_BOARD=$BOARD \
         -DUSER_C_MODULES="$MODULE_CMAKE" \
-        -DMICROPY_C_HEAP_SIZE=114688 \
+        -DMICROPY_C_HEAP_SIZE=106496 \
         $CMAKE_EXTRA
 
     echo "Building pioasm..."
