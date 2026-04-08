@@ -161,8 +161,10 @@ def sync_ntp():
     gfx.print_string(10, 90, "NTP sync...", BLACK, WHITE)
     try:
         ntptime.settime()
+        gfx.cls(BLACK)
         return True
     except Exception:
+        gfx.cls(BLACK)
         return False
 
 # Weather - Open-Meteo, no API key needed
