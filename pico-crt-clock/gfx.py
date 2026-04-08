@@ -258,6 +258,46 @@ _screen        = None   # pygame window surface
 _surface       = None   # 256x192 logical surface
 _border_colour = 0
 
+# -- GPIO simulation -----------------------------------------------------------
+# SimPin objects are appended here in order as machine.Pin() is called.
+# Keys a/b/c/d pull the corresponding pin low; ESC releases all (default mode).
+_sim_pins    = []
+_desired_mode = 0   # persists across sim reboots; updated by _set_gpio_mode
+
+class _SimPin:
+    __slots__ = ('_low',)
+    def __init__(self):    self._low = False
+    def value(self):       return 0 if self._low else 1
+
+_KEY_TO_PIN = {
+    pygame.K_a: 0,
+    pygame.K_b: 1,
+    pygame.K_c: 2,
+    pygame.K_d: 3,
+}
+
+def _set_gpio_mode(idx):
+    """Pull pin idx low (all others high). idx=-1 = all high (default)."""
+    global _desired_mode
+    _desired_mode = idx
+    for i, p in enumerate(_sim_pins):
+        p._low = (i == idx)
+    _update_caption()
+
+def _update_caption():
+    if not pygame.get_init():
+        return
+    font_tag = "C64 font" if _FONT_NAME == 'c64' else "Spectrum font"
+    keys = "abcd"
+    active = next((i for i, p in enumerate(_sim_pins) if p._low), None)
+    if _sim_pins:
+        hints = "  ".join(f"{keys[i]}=mode {i}" for i in range(len(_sim_pins)))
+        mode  = f"mode {active}" if active is not None else "default"
+        caption = f"pico-crt-clock sim [{font_tag}]  |  {hints}  ESC=default  [{mode}]"
+    else:
+        caption = f"pico-crt-clock sim [{font_tag}]"
+    pygame.display.set_caption(caption)
+
 def _ensure_init():
     global _screen, _surface
     if _screen is not None:
@@ -265,8 +305,7 @@ def _ensure_init():
     pygame.init()
     _screen  = pygame.display.set_mode(
         (WIDTH * SCALE + BORDER * 2, HEIGHT * SCALE + BORDER * 2))
-    font_tag = "C64 font" if _FONT_NAME == 'c64' else "Spectrum font"
-    pygame.display.set_caption(f"pico-crt-clock sim [{font_tag}]")
+    _update_caption()
     _surface = pygame.Surface((WIDTH, HEIGHT))
     _surface.fill(PALETTE[0])
     _present()
@@ -285,7 +324,12 @@ def _pump():
             pygame.quit()
             sys.exit(0)
         elif ev.type == pygame.KEYDOWN:
-            _key_queue.append(ev.key)
+            if ev.key in _KEY_TO_PIN:
+                _set_gpio_mode(_KEY_TO_PIN[ev.key])
+            elif ev.key == pygame.K_ESCAPE:
+                _set_gpio_mode(-1)
+            else:
+                _key_queue.append(ev.key)
 
 def _present():
     _pump()
@@ -342,7 +386,7 @@ def cls(colour):
     _surface.fill(PALETTE[colour & 0xF])
 
 def wait_vblank():
-    _pump()
+    _present()
 
 def set_border(colour):
     global _border_colour
