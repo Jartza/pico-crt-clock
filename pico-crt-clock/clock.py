@@ -124,6 +124,22 @@ def draw_all(time_str, date_str, cur_temp, wind_speed, weather_days, ox=0, oy=0)
         tx = ix + (32 - len(temp_str) * 16) // 2
         gfx.print_string_2x(tx, fy + 45, temp_str, BLACK, WHITE)
 
+def draw_banner(text):
+    """Draw a centred status banner: black filled box + white border + text.
+    Overlays on the current frame without clearing the screen."""
+    tw  = len(text) * 8
+    tx  = (256 - tw) // 2
+    ty  = 92                        # vertically centred on 192 px screen
+    bx0 = tx - 4;  bx1 = tx + tw + 3
+    by0 = ty - 4;  by1 = ty + 11
+    for y in range(by0, by1 + 1):  # black fill
+        gfx.line(bx0, y, bx1, y, BLACK)
+    gfx.line(bx0 - 1, by0 - 1, bx1 + 1, by0 - 1, WHITE)   # top
+    gfx.line(bx0 - 1, by1 + 1, bx1 + 1, by1 + 1, WHITE)   # bottom
+    gfx.line(bx0 - 1, by0 - 1, bx0 - 1, by1 + 1, WHITE)   # left
+    gfx.line(bx1 + 1, by0 - 1, bx1 + 1, by1 + 1, WHITE)   # right
+    gfx.print_string(tx, ty, text, BLACK, WHITE)
+
 # WiFi connection with status messages.
 def connect_wifi():
     gfx.cls(BLACK)
@@ -189,10 +205,19 @@ def _day_icons(wmo_code, sunshine_s, daylight_s, precip_sum_mm, precip_prob):
 
     return sky_ic, prc_ic
 
-def fetch_weather(show_msg=False):
-    if show_msg:
-        gfx.cls(BLACK)
-        gfx.print_string(52, 92, "Fetching weather...", BLACK, WHITE)
+def fetch_weather():
+    if wlan is not None and not wlan.isconnected():
+        draw_banner("Reconnecting WiFi...")
+        try:
+            wlan.connect(WIFI_SSID, WIFI_PASS)
+            deadline = time.ticks_add(time.ticks_ms(), WIFI_TIMEOUT_MS)
+            while time.ticks_diff(deadline, time.ticks_ms()) > 0:
+                if wlan.isconnected():
+                    break
+                time.sleep_ms(500)
+        except Exception:
+            pass
+    draw_banner("Fetching weather...")
     url = (
         "https://api.open-meteo.com/v1/forecast"
         "?latitude={}&longitude={}"
@@ -270,7 +295,7 @@ _boot_t  = time.time()
 _boot_lt = time.localtime(_boot_t + _utc_offset(_boot_t))
 _boot_h  = _boot_lt[3]
 _boot_day = _boot_lt[2]
-raw = fetch_weather(show_msg=True)
+raw = fetch_weather()
 ct, ws, days = parse_weather(raw, 1 if FORECAST_NEXT_DAY_HOUR > 0 and _boot_h >= FORECAST_NEXT_DAY_HOUR else 0)
 if days:
     cur_temp   = ct
