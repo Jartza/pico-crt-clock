@@ -8,12 +8,12 @@
 import struct
 from math import sin, cos
 
-_TORUS_N    = 7     # tube segments
-_TORUS_M    = 10    # ring segments
+_TORUS_N    = 8     # tube segments
+_TORUS_M    = 8     # ring segments
 _TORUS_R    = 46    # major radius
 _TORUS_r    = 20    # minor radius
-_WB_AMP     = 1.3   # wobble amplitude (radians)
-_PERSP_DIST = 120    # perspective view distance
+_WB_AMP     = 0.95  # wobble amplitude (radians)
+_PERSP_DIST = 115   # perspective view distance
 
 def make_torus_bin(filename="torus.bin"):
     N, M = _TORUS_N, _TORUS_M
@@ -46,28 +46,46 @@ def make_torus_bin(filename="torus.bin"):
     icx_lut = [int(cos(sin(i * 6.2832 / 256) * _WB_AMP) * 256) for i in range(256)]
     isx_lut = [int(sin(sin(i * 6.2832 / 256) * _WB_AMP) * 256) for i in range(256)]
 
-    # Edge list: flat (a, b, c) int16 triples
-    edges = []
+    # Face normals: outward unit normal at each face centre, fixed-point ×256 (int16)
+    # Normal at face (j,i) centre: (cos(theta)*cos(phi), cos(theta)*sin(phi), sin(theta))
+    fnx = [0] * NM;  fny = [0] * NM;  fnz = [0] * NM
+    k = 0
+    for j in range(M):
+        phi = (j + 0.5) * 6.2832 / M
+        cp, sp = cos(phi), sin(phi)
+        for i in range(N):
+            theta = (i + 0.5) * 6.2832 / N
+            ct = cos(theta)
+            fnx[k] = int(ct * cp * 256)
+            fny[k] = int(ct * sp * 256)
+            fnz[k] = int(sin(theta) * 256)
+            k += 1
+
+    # Face quad vertex indices: (a, b, c, d) counter-clockwise (int16)
+    faces = []
     for j in range(M):
         nj = (j + 1) % M
         for i in range(N):
             ni = (i + 1) % N
-            edges += [j*N+i, j*N+ni, nj*N+i]
+            faces += [j*N+i, j*N+ni, nj*N+ni, nj*N+i]
 
     persp_size = zmax + 1
     with open(filename, "wb") as f:
         # Header: N, M, R, r (uint8), WB_AMP ×1000 (uint16), PERSP_DIST (uint16)
         f.write(struct.pack("4B2H", N, M, R, r, round(_WB_AMP * 1000), _PERSP_DIST))
-        f.write(struct.pack(f"{NM}i", *bx))
-        f.write(struct.pack(f"{NM}i", *by))
-        f.write(struct.pack(f"{NM}i", *bz))
+        f.write(struct.pack(f"{NM}i",         *bx))
+        f.write(struct.pack(f"{NM}i",         *by))
+        f.write(struct.pack(f"{NM}i",         *bz))
         f.write(struct.pack(f"{persp_size}H", *persp_lut))
-        f.write(struct.pack(f"256h", *sin_lut))
-        f.write(struct.pack(f"256h", *icx_lut))
-        f.write(struct.pack(f"256h", *isx_lut))
-        f.write(struct.pack(f"{NM*3}h", *edges))
+        f.write(struct.pack(f"256h",          *sin_lut))
+        f.write(struct.pack(f"256h",          *icx_lut))
+        f.write(struct.pack(f"256h",          *isx_lut))
+        f.write(struct.pack(f"{NM}i",         *fnx))
+        f.write(struct.pack(f"{NM}i",         *fny))
+        f.write(struct.pack(f"{NM}i",         *fnz))
+        f.write(struct.pack(f"{NM*4}h",       *faces))
 
-    total = 8 + NM*4*3 + persp_size*2 + 256*2*3 + NM*3*2
+    total = 8 + NM*4*3 + persp_size*2 + 256*2*3 + NM*4*3 + NM*4*2
     print(f"Wrote {filename} ({total} bytes)")
 
 if __name__ == "__main__":
