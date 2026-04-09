@@ -245,7 +245,8 @@ def parse_weather(data, start_day=0):
     if data is None:
         return None, None, None
     try:
-        cur_temp   = round(data['hourly']['temperature_2m'][time.localtime()[3]])
+        _now = time.time()
+        cur_temp   = round(data['hourly']['temperature_2m'][time.localtime(_now + _utc_offset(_now))[3]])
         wind_speed = round(data['current']['wind_speed_10m'])
         daily      = data['daily']
         days = []
