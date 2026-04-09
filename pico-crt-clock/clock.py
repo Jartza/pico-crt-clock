@@ -246,7 +246,10 @@ def parse_weather(data, start_day=0):
         return None, None, None
     try:
         _now = time.time()
-        cur_temp   = round(data['hourly']['temperature_2m'][time.localtime(_now + _utc_offset(_now))[3]])
+        _lt  = time.localtime(_now + _utc_offset(_now))
+        _ts  = "{:04d}-{:02d}-{:02d}T{:02d}:00".format(_lt[0], _lt[1], _lt[2], _lt[3])
+        _hi  = next((i for i, t in enumerate(data['hourly']['time']) if t == _ts), 0)
+        cur_temp   = round(data['hourly']['temperature_2m'][_hi])
         wind_speed = round(data['current']['wind_speed_10m'])
         daily      = data['daily']
         days = []
@@ -312,6 +315,7 @@ last_weather_ts = time.time()
 # finishes before the next field starts.
 last_sec       = -1
 last_day       = _boot_day
+last_h         = _boot_h
 last_start_day = 1 if FORECAST_NEXT_DAY_HOUR > 0 and _boot_h >= FORECAST_NEXT_DAY_HOUR else 0
 last_move      = time.ticks_ms()
 ox, oy     = 0, 0
@@ -351,6 +355,15 @@ while True:
             weather     = days
         last_weather_ts  = now
         last_start_day   = start_day
+        last_h           = h
+
+    # Hour change: re-parse cached data to pick the new hourly temperature
+    elif h != last_h:
+        last_h = h
+        if raw is not None:
+            ct, _, _ = parse_weather(raw, start_day)
+            if ct is not None:
+                cur_temp = ct
 
     # Advance screensaver position every SCREENSAVER_SPEED*50 ms (e.g. 100 ms for speed=2).
     # or disable movement if SCREENSAVER_SPEED is 999 or more.
