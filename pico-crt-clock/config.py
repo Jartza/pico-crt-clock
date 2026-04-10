@@ -12,8 +12,8 @@ UTC_OFFSET = 2
 USE_DST = True
 
 # Location for weather - Open-Meteo uses decimal degrees
-LATITUDE  = 60.22   # Replace with your own coordinates
-LONGITUDE = 24.03
+LATITUDE  = 60.48   # Replace with your own coordinates
+LONGITUDE = 24.11
 
 # How often to refresh weather data (seconds)
 WEATHER_INTERVAL = 30 * 60
