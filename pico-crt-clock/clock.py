@@ -221,20 +221,23 @@ def fetch_weather():
         except Exception:
             pass
     draw_banner("Fetching weather...")
-    url = (
-        "https://api.open-meteo.com/v1/forecast"
-        "?latitude={}&longitude={}"
-        "&current=weather_code,wind_speed_10m"
-        "&hourly=temperature_2m"
-        "&daily=weather_code,temperature_2m_max,sunshine_duration,daylight_duration,precipitation_sum,precipitation_probability_mean"
-        "&forecast_days=7&timezone=auto"
-        "&temperature_unit={}&wind_speed_unit={}"
-    ).format(LATITUDE, LONGITUDE,
-             "fahrenheit" if TEMP_UNIT == "F" else "celsius",
-             WIND_UNIT)
+    base = "https://api.open-meteo.com/v1/forecast?latitude={}&longitude={}&timezone=auto".format(
+        LATITUDE, LONGITUDE)
+    tunit = "fahrenheit" if TEMP_UNIT == "F" else "celsius"
     try:
-        r = urequests.get(url, timeout=30)
-        data = r.json()
+        r = urequests.get(
+            base + "&current=weather_code,wind_speed_10m"
+                   "&daily=weather_code,temperature_2m_max,sunshine_duration"
+                   ",daylight_duration,precipitation_sum,precipitation_probability_mean"
+                   "&forecast_days=7&temperature_unit={}&wind_speed_unit={}".format(tunit, WIND_UNIT),
+            timeout=30)
+        data = json.loads(r.content)
+        r.close()
+        gc.collect()
+        r = urequests.get(
+            base + "&hourly=temperature_2m&forecast_days=1&temperature_unit={}".format(tunit),
+            timeout=30)
+        data['hourly'] = json.loads(r.content)['hourly']
         r.close()
         return data
     except Exception:
