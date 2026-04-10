@@ -4,6 +4,7 @@ import network
 import ntptime
 import urequests
 import json
+import gc
 from config import *
 
 with open('icons.bin', 'rb') as _f:
@@ -273,6 +274,27 @@ def parse_weather(data, start_day=0):
     except Exception:
         return None, None, None
 
+_today_hrs = None
+
+def _store_hourly(data):
+    """Extract today's hourly temps into a compact 24-int list for hour-change updates."""
+    global _today_hrs
+    if data is None:
+        return
+    try:
+        now = time.time()
+        lt  = time.localtime(now + _utc_offset(now))
+        pfx = "{:04d}-{:02d}-{:02d}T".format(lt[0], lt[1], lt[2])
+        times = data['hourly']['time']
+        temps = data['hourly']['temperature_2m']
+        hrs = [None] * 24
+        for i in range(len(times)):
+            if times[i].startswith(pfx):
+                hrs[int(times[i][11:13])] = round(temps[i])
+        _today_hrs = hrs
+    except Exception:
+        _today_hrs = None
+
 # Startup sequence: connect WiFi, sync NTP, fetch initial weather.  Show status
 wlan = connect_wifi()
 if wlan is None:
@@ -301,12 +323,15 @@ _boot_t  = time.time()
 _boot_lt = time.localtime(_boot_t + _utc_offset(_boot_t))
 _boot_h  = _boot_lt[3]
 _boot_day = _boot_lt[2]
-raw = fetch_weather()
-ct, ws, days = parse_weather(raw, 1 if FORECAST_NEXT_DAY_HOUR > 0 and _boot_h >= FORECAST_NEXT_DAY_HOUR else 0)
+_raw = fetch_weather()
+ct, ws, days = parse_weather(_raw, 1 if FORECAST_NEXT_DAY_HOUR > 0 and _boot_h >= FORECAST_NEXT_DAY_HOUR else 0)
 if days:
     cur_temp   = ct
     wind_speed = ws
     weather    = days
+_store_hourly(_raw)
+del _raw
+gc.collect()
 last_weather_ts = time.time()
 
 # Main loop: update time every second, refresh weather every WEATHER_INTERVAL seconds
@@ -347,23 +372,24 @@ while True:
     start_day = 1 if FORECAST_NEXT_DAY_HOUR > 0 and h >= FORECAST_NEXT_DAY_HOUR else 0
     _wi = 30 if cur_temp is None else WEATHER_INTERVAL
     if now - last_weather_ts >= _wi or start_day != last_start_day:
-        raw = fetch_weather()
-        ct, ws, days = parse_weather(raw, start_day)
+        _raw = fetch_weather()
+        ct, ws, days = parse_weather(_raw, start_day)
         if days:            # keep old data on failure
             cur_temp    = ct
             wind_speed  = ws
             weather     = days
+        _store_hourly(_raw)
+        del _raw
+        gc.collect()
         last_weather_ts  = now
         last_start_day   = start_day
         last_h           = h
 
-    # Hour change: re-parse cached data to pick the new hourly temperature
+    # Hour change: update temperature from compact hourly cache
     elif h != last_h:
         last_h = h
-        if raw is not None:
-            ct, _, _ = parse_weather(raw, start_day)
-            if ct is not None:
-                cur_temp = ct
+        if _today_hrs is not None and _today_hrs[h] is not None:
+            cur_temp = _today_hrs[h]
 
     # Advance screensaver position every SCREENSAVER_SPEED*50 ms (e.g. 100 ms for speed=2).
     # or disable movement if SCREENSAVER_SPEED is 999 or more.
