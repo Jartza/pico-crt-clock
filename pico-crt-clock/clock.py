@@ -95,7 +95,7 @@ def _utc_offset(utc_ts):
 # an implicit wait_vblank, so the first blit after it is guaranteed to be in the next
 # field). All subsequent drawing commands go straight to the queue and core1 renders
 # them in C before the next field.
-def draw_all(time_str, date_str, cur_temp, wind_speed, weather_days, ox=0, oy=0):
+def draw_all(time_str, date_str, cur_temp, wind_speed, weather_days, ox=0, oy=0, temp_col=WHITE):
     gfx.cls(BLACK)
     tx = (256 - len(time_str) * 16) // 2 + ox
     gfx.print_string_2x(tx, TIME_Y + oy, time_str, BLACK, WHITE)
@@ -123,7 +123,7 @@ def draw_all(time_str, date_str, cur_temp, wind_speed, weather_days, ox=0, oy=0)
         if prc_ic is not None:
             gfx.blit(prc_ic, 32, 16, ix, fy + 27)
         tx = ix + (32 - len(temp_str) * 16) // 2
-        gfx.print_string_2x(tx, fy + 45, temp_str, BLACK, WHITE)
+        gfx.print_string_2x(tx, fy + 45, temp_str, BLACK, temp_col)
 
 def draw_banner(text):
     """Draw a centred status banner: black filled box + white border + text.
@@ -315,9 +315,10 @@ if not sync_ntp():
     gfx.print_string(10, 90, "NTP failed!", BLACK, WHITE)
     time.sleep_ms(2000)
 
-cur_temp   = None
-wind_speed = None
-weather    = [(sky_cloud, None, "---", "---")] * 3   # shown if first fetch fails
+cur_temp    = None
+wind_speed  = None
+weather     = [(sky_cloud, None, "---", "---")] * 3   # shown if first fetch fails
+weather_ok  = False
 
 _boot_t  = time.time()
 _boot_lt = time.localtime(_boot_t + _utc_offset(_boot_t))
@@ -329,6 +330,7 @@ if days:
     cur_temp   = ct
     wind_speed = ws
     weather    = days
+weather_ok = bool(days)
 _store_hourly(_raw)
 del _raw
 gc.collect()
@@ -378,6 +380,7 @@ while True:
             cur_temp    = ct
             wind_speed  = ws
             weather     = days
+        weather_ok = bool(days)
         _store_hourly(_raw)
         del _raw
         gc.collect()
@@ -407,5 +410,6 @@ while True:
             oy = 0;          vy =  1
         last_sec = s
 
-    draw_all(time_str, date_str, cur_temp, wind_speed, weather, ox, oy)
+    draw_all(time_str, date_str, cur_temp, wind_speed, weather, ox, oy,
+             temp_col=WHITE if weather_ok else 10)
     time.sleep_ms(10)
