@@ -139,9 +139,9 @@ import urllib.request
 
 class _Response:
     def __init__(self, data: bytes):
-        self._data = data
+        self.content = data
     def json(self):
-        return json.loads(self._data.decode())
+        return json.loads(self.content.decode())
     def close(self):
         pass
 
