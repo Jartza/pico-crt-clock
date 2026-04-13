@@ -18,6 +18,7 @@ CHARS_TITLE = 256 // 16   # 16
 CHARS_BODY  = 256 // 8    # 32
 
 HOLD_MS         = NEWS_HOLD       * 1000
+HOLD_SUM_MS     = NEWS_HOLD_SUM   * 1000
 HOLD_AFTER_MS   = NEWS_HOLD_AFTER * 1000
 SCROLL_DELAY_MS = NEWS_SCROLL_SPEED
 
@@ -200,7 +201,8 @@ def _json_body_wrap(src, key, dst, width, max_lines=0):
                 # ── HTML tag ──────────────────────────────────────────────────
                 if in_tag:
                     if ch == '>':
-                        if tag.strip().lower().startswith('/p'):
+                        low = tag.strip().lower()
+                        if low.startswith('/p'):
                             # </p>: flush word → line, write line + blank separator
                             if word:
                                 while len(word) > width and not trunc:
@@ -222,6 +224,21 @@ def _json_body_wrap(src, key, dst, width, max_lines=0):
                             if not trunc:
                                 dst.write('\n'); lines += 1
                                 if max_lines and lines >= max_lines: trunc = True
+                        elif low.lstrip('/').startswith('br'):
+                            # <br>: flush word + line, no blank separator
+                            if word:
+                                if not line:                             line = word
+                                elif len(line)+1+len(word) <= width:    line += ' '+word
+                                else:
+                                    if not trunc:
+                                        dst.write(line+'\n'); lines += 1
+                                        if max_lines and lines >= max_lines: trunc = True
+                                    line = word
+                                word = ''
+                            if not trunc and line:
+                                dst.write(line+'\n'); lines += 1
+                                if max_lines and lines >= max_lines: trunc = True
+                                line = ''
                         in_tag = False; tag = ''
                     elif len(tag) < 16:
                         tag += ch
@@ -301,7 +318,7 @@ def _fetch_and_store():
                 gc.collect()
                 r = urequests.get(
                     "https://content.guardianapis.com/search"
-                    "?section={}&show-fields=headline,body"
+                    "?section={}&show-fields=headline,trailText,body"
                     "&page-size=1&page={}&api-key={}".format(
                         section, page, NEWS_API_KEY),
                     timeout=30)
@@ -324,8 +341,18 @@ def _fetch_and_store():
                     os.remove('_ntmp')
                     continue
 
-                # Write article file: title lines, separator, then stream body
-                tlines  = _word_wrap(headline, CHARS_TITLE)[:2]
+                tlines = _word_wrap(headline, CHARS_TITLE)[:2]
+
+                # Write summary file: title + trailText (HTML, so use same stripper as body)
+                sumpath = '{}/news_{:02d}_sum.txt'.format(NEWS_DIR, count)
+                with open(sumpath, 'w') as out:
+                    out.write((tlines[0] if tlines else '') + '\n')
+                    out.write((tlines[1] if len(tlines) > 1 else '') + '\n')
+                    out.write('---\n')
+                    _json_body_wrap('_ntmp', 'trailText', out, CHARS_BODY, 0)
+                gc.collect()
+
+                # Write full article file: title + HTML body streamed and stripped
                 outpath = '{}/news_{:02d}.txt'.format(NEWS_DIR, count)
                 with open(outpath, 'w') as out:
                     out.write((tlines[0] if tlines else '') + '\n')
@@ -345,7 +372,8 @@ def _fetch_and_store():
 def _list_files():
     try:
         fnames = sorted(fn for fn in os.listdir(NEWS_DIR)
-                        if fn.startswith('news_') and fn.endswith('.txt'))
+                        if fn.startswith('news_') and fn.endswith('.txt')
+                        and '_sum' not in fn)
         return [NEWS_DIR + '/' + fn for fn in fnames]
     except OSError:
         return []
@@ -365,19 +393,27 @@ def _draw_header(t1, t2):
     gfx.line(0, SEP_Y - 1, 255, SEP_Y - 1, BLACK)
     gfx.line(0, SEP_Y,     255, SEP_Y,     WHITE)
 
-def _poll_pin(pin, ms):
-    """Sleep up to ms milliseconds, returning True immediately if pin released."""
+def _poll_pin(pin, ms, detail_pin=None, d_state=None):
+    """Sleep up to ms milliseconds.
+    Returns 'MODE' if mode pin released, 'SWAP' if detail_pin changed, None on timeout."""
     deadline = time.ticks_add(time.ticks_ms(), ms)
     while time.ticks_diff(deadline, time.ticks_ms()) > 0:
         if pin is not None and pin.value():
-            return True
+            return 'MODE'
+        if detail_pin is not None and detail_pin.value() != d_state:
+            return 'SWAP'
         time.sleep_ms(50)
-    return False
+    return None
 
 # ── Article display ───────────────────────────────────────────────────────────
-def _show_article(filename, pin):
+def _show_article(filename, pin, detail_pin=None, hold_ms=None):
     """Display one article with smooth scroll if content exceeds screen height.
-    Returns False if pin was released (user switched mode), True otherwise."""
+    Returns None on normal completion, 'MODE' if mode pin released,
+    'SWAP' if the detail switch changed (screen cleared, same article re-shown)."""
+    if hold_ms is None:
+        hold_ms = HOLD_MS
+    d_state = detail_pin.value() if detail_pin is not None else None
+
     with open(filename) as f:
         t1 = f.readline().rstrip()
         t2 = f.readline().rstrip()
@@ -402,17 +438,24 @@ def _show_article(filename, pin):
         nxtline = nxt.rstrip() if nxt else None
 
         gfx.wait_vblank()   # present the initial frame before any hold begins
-        if _poll_pin(pin, HOLD_MS):
-            return False
+        result = _poll_pin(pin, hold_ms, detail_pin, d_state)
+        if result == 'SWAP':
+            gfx.cls(BLACK)
+            return 'SWAP'
+        if result == 'MODE':
+            return 'MODE'
         if nxtline is None:
             # fits on one screen — initial hold was enough, move on
-            return True
+            return None
 
         # Smooth scroll: 1 px/frame, new body line every LINE_H pixels
         sub_px = 0
         while nxtline is not None:
             if pin is not None and pin.value():
-                return False
+                return 'MODE'
+            if detail_pin is not None and detail_pin.value() != d_state:
+                gfx.cls(BLACK)
+                return 'SWAP'
             gfx.wait_vblank()
             gfx.scroll_up(BLACK, 1)
             _draw_header(t1, t2)
@@ -424,17 +467,25 @@ def _show_article(filename, pin):
                 nxtline = nxt.rstrip() if nxt else None
             time.sleep_ms(SCROLL_DELAY_MS)
 
-    if _poll_pin(pin, HOLD_AFTER_MS):
-        return False
-    return True
+    result = _poll_pin(pin, HOLD_AFTER_MS, detail_pin, d_state)
+    if result == 'SWAP':
+        gfx.cls(BLACK)
+        return 'SWAP'
+    if result == 'MODE':
+        return 'MODE'
+    return None
 
 # ── Entry point ───────────────────────────────────────────────────────────────
 def run(pin=None):
     global wlan
+    from machine import Pin as _Pin
 
     gfx.init()
     gfx.set_border(0)
     gfx.cls(BLACK)
+
+    # GPIO 13: detail switch — low = show full article, high (default) = summary
+    detail_pin = _Pin(13, _Pin.IN, _Pin.PULL_UP)
 
     wlan = connect_wifi()
     if wlan is None:
@@ -467,12 +518,30 @@ def run(pin=None):
         if not files:
             gfx.cls(BLACK)
             gfx.print_string(16, 92, "News unavailable", BLACK, WHITE)
-            if _poll_pin(pin, 60000):
+            if _poll_pin(pin, 60000, detail_pin, detail_pin.value()) == 'MODE':
                 return
             continue
 
-        for filename in files:
+        idx = 0
+        while idx < len(files):
             if pin is not None and pin.value():
                 return
-            if not _show_article(filename, pin):
+            # Select file based on detail switch: high = summary (default), low = full article
+            base = files[idx]
+            if detail_pin.value():   # high = summary mode (hardware default, pull-up)
+                spath = base[:-4] + '_sum.txt'
+                try:
+                    os.stat(spath)
+                    show_file = spath
+                except OSError:
+                    show_file = base   # fall back to full if no summary cached
+            else:
+                show_file = base       # low = full article mode (switch to GND)
+            hold = HOLD_SUM_MS if show_file != base else HOLD_MS
+            result = _show_article(show_file, pin, detail_pin, hold)
+            if result == 'MODE':
                 return
+            elif result == 'SWAP':
+                pass   # re-show same article in new mode
+            else:
+                idx += 1

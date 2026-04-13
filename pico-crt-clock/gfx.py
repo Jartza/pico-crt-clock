@@ -260,9 +260,13 @@ _border_colour = 0
 
 # -- GPIO simulation -----------------------------------------------------------
 # SimPin objects are appended here in order as machine.Pin() is called.
-# Keys a/b/c/d pull the corresponding pin low; ESC releases all (default mode).
+# Keys a/b/c switch modes exclusively (only one low at a time); ESC = all high.
+# Key d independently toggles the detail pin (index 3) without affecting mode pins.
+# The detail pin starts LOW (summary mode, matching hardware default) and persists
+# across soft-resets via _detail_low.
 _sim_pins    = []
 _desired_mode = 0   # persists across sim reboots; updated by _set_gpio_mode
+_detail_low   = False  # False = pin 3 HIGH = summary (hardware default, pull-up)
 
 class _SimPin:
     __slots__ = ('_low',)
@@ -273,25 +277,37 @@ _KEY_TO_PIN = {
     pygame.K_a: 0,
     pygame.K_b: 1,
     pygame.K_c: 2,
-    pygame.K_d: 3,
 }
 
 def _set_gpio_mode(idx):
-    """Pull pin idx low (all others high). idx=-1 = all high (default)."""
+    """Pull mode pin idx low (pins 0-2 only, exclusive). idx=-1 = all mode pins high."""
     global _desired_mode
     _desired_mode = idx
-    for i, p in enumerate(_sim_pins):
+    for i, p in enumerate(_sim_pins[:3]):
         p._low = (i == idx)
+    _update_caption()
+
+def _toggle_detail_pin():
+    """Toggle pin 3 (detail/summary switch) independently of mode pins.
+    LOW = summary (default), HIGH = full article."""
+    global _detail_low
+    _detail_low = not _detail_low
+    if len(_sim_pins) > 3:
+        _sim_pins[3]._low = _detail_low
     _update_caption()
 
 def _update_caption():
     if not pygame.get_init():
         return
     font_tag = "C64 font" if _FONT_NAME == 'c64' else "Spectrum font"
-    keys = "abcd"
-    active = next((i for i, p in enumerate(_sim_pins) if p._low), None)
+    keys = "abc"
+    n_mode = min(len(_sim_pins), 3)
+    active = next((i for i, p in enumerate(_sim_pins[:3]) if p._low), None)
     if _sim_pins:
-        hints = "  ".join(f"{keys[i]}=mode {i}" for i in range(len(_sim_pins)))
+        hints = "  ".join(f"{keys[i]}=mode {i}" for i in range(n_mode))
+        if len(_sim_pins) > 3:
+            det = "summary" if _sim_pins[3]._low else "full article"
+            hints += f"  d={det}"
         mode  = f"mode {active}" if active is not None else "default"
         caption = f"pico-crt-clock sim [{font_tag}]  |  {hints}  ESC=default  [{mode}]"
     else:
@@ -326,8 +342,15 @@ def _pump():
         elif ev.type == pygame.KEYDOWN:
             if ev.key in _KEY_TO_PIN:
                 _set_gpio_mode(_KEY_TO_PIN[ev.key])
+            elif ev.key == pygame.K_d:
+                _toggle_detail_pin()
             elif ev.key == pygame.K_ESCAPE:
                 _set_gpio_mode(-1)
+                global _detail_low
+                _detail_low = True
+                if len(_sim_pins) > 3:
+                    _sim_pins[3]._low = True
+                _update_caption()
             else:
                 _key_queue.append(ev.key)
 
