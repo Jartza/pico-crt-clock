@@ -68,11 +68,13 @@ def draw_banner(text):
 
 def connect_wifi():
     """Connect to WiFi, return wlan object or None on timeout.
-    On first power-up shows SSID + IP for 4 s so the user can note the address.
-    On soft_reset (mode switch) just returns silently."""
-    draw_banner("Connecting WiFi...")
+    Returns immediately if already connected (e.g. after soft_reset mode switch).
+    On first power-up shows SSID + IP for 4 s so the user can note the address."""
     wlan = network.WLAN(network.STA_IF)
     wlan.active(True)
+    if wlan.isconnected():
+        return wlan
+    draw_banner("Connecting WiFi...")
     wlan.connect(WIFI_SSID, WIFI_PASS)
     deadline = time.ticks_add(time.ticks_ms(), WIFI_TIMEOUT_MS)
     while time.ticks_diff(deadline, time.ticks_ms()) > 0:
