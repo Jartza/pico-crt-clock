@@ -1,4 +1,5 @@
 from machine import Pin, soft_reset
+import time
 
 # Each mode has a dedicated GPIO with internal pull-up.
 # Connect the matching switch position to GND to activate that mode.
@@ -12,6 +13,8 @@ _PINS = [
     Pin(11, Pin.IN, Pin.PULL_UP),   # mode 1: torus
     Pin(12, Pin.IN, Pin.PULL_UP),   # mode 2: news
 ]
+
+time.sleep(0.1)  # debounce delay for mode switches
 
 mode = None
 for i, pin in enumerate(_PINS):
