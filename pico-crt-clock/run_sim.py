@@ -138,10 +138,12 @@ sys.modules['ntptime'] = ntptime
 
 # -- mock 'urequests' module ---------------------------------------------------
 import urllib.request
+import io
 
 class _Response:
     def __init__(self, data: bytes):
         self.content = data
+        self.raw = io.BytesIO(data)
     def json(self):
         return json.loads(self.content.decode())
     def close(self):
@@ -158,7 +160,7 @@ urequests.get     = _get
 sys.modules['urequests'] = urequests
 
 # -- modules to clear on each soft_reset so they re-import fresh ---------------
-_APP_MODULES = {'main', 'clock', 'torus', 'common'}
+_APP_MODULES = {'main', 'clock', 'torus', 'news', 'common'}
 
 # -- compile main.py once; re-exec on every soft_reset -------------------------
 with open(os.path.join(_here, 'main.py')) as f:

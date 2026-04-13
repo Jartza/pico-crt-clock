@@ -1,6 +1,30 @@
 WIFI_SSID = "wifiname"
 WIFI_PASS = "password"
 
+# The Guardian open platform API key — get a free key at https://open-platform.theguardian.com
+NEWS_API_KEY = "your-guardian-api-key"
+
+# Guardian sections to fetch from, comma-separated.
+# Examples: technology, science, world, business, environment, politics
+# Articles are fetched from each section and interleaved.
+NEWS_SECTIONS = "world,technology,science"
+
+# How many articles to fetch per section
+NEWS_COUNT = 4
+
+# How often to refresh news (seconds); free tier allows 5000 req/day
+NEWS_INTERVAL = 2 * 60 * 60
+
+# Seconds to hold the initial screen (also the only hold if article fits on one screen)
+NEWS_HOLD = 20
+
+# Seconds to hold after scrolling finishes (only applies when scrolling occurred)
+NEWS_HOLD_AFTER = 3
+
+# Scroll speed: extra milliseconds of delay per pixel (larger = slower)
+# 125 is about 1 row of text per second.
+NEWS_SCROLL_SPEED = 150
+
 # Timezone: base UTC offset in whole hours (without DST).
 # Examples: Finland/EET=2, Germany/CET=1, UK/GMT=0, EST=-5
 UTC_OFFSET = 2

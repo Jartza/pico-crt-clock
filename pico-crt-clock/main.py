@@ -10,6 +10,7 @@ from machine import Pin, soft_reset
 _PINS = [
     Pin(10, Pin.IN, Pin.PULL_UP),   # mode 0: clock/weather
     Pin(11, Pin.IN, Pin.PULL_UP),   # mode 1: torus
+    Pin(12, Pin.IN, Pin.PULL_UP),   # mode 2: news
 ]
 
 mode = None
@@ -20,6 +21,8 @@ for i, pin in enumerate(_PINS):
 
 if mode == 1:
     import torus; torus.run(_PINS[1])
+elif mode == 2:
+    import news; news.run(_PINS[2])
 else:
     # mode 0 or no switch connected — default clock/weather
     import clock; clock.run(_PINS[0] if mode == 0 else None)
