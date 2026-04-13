@@ -21,9 +21,13 @@ NEWS_HOLD = 20
 # Seconds to hold after scrolling finishes (only applies when scrolling occurred)
 NEWS_HOLD_AFTER = 3
 
+# Max body lines stored per article (0 = unlimited).
+# ~21 lines fill one screen; 105 is about 5 screens of content.
+NEWS_BODY_LINES = 105
+
 # Scroll speed: extra milliseconds of delay per pixel (larger = slower)
 # 125 is about 1 row of text per second.
-NEWS_SCROLL_SPEED = 150
+NEWS_SCROLL_SPEED = 125
 
 # Timezone: base UTC offset in whole hours (without DST).
 # Examples: Finland/EET=2, Germany/CET=1, UK/GMT=0, EST=-5

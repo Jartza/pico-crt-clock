@@ -124,16 +124,44 @@ def _json_str(f, key):
             break
     return ''.join(out)
 
-def _json_body_wrap(src, key, dst, width):
-    """Stream JSON string 'key' from file src, word-wrap at width, write lines to dst.
-    Reads src in _CHUNK pieces; never holds more than one word+line in RAM."""
+# HTML entity map for the body field
+_HTML_ENT = {
+    'amp': '&', 'lt': '<', 'gt': '>', 'quot': '"', 'apos': "'", 'nbsp': ' ',
+}
+
+def _entity_char(e):
+    """Decode an HTML entity name/number to a displayable ASCII string."""
+    if e.startswith('#x') or e.startswith('#X'):
+        try:    ch = chr(int(e[2:], 16))
+        except: return ''
+    elif e.startswith('#'):
+        try:    ch = chr(int(e[1:]))
+        except: return ''
+    else:
+        ch = _HTML_ENT.get(e, '')
+    if not ch:             return ''
+    if ord(ch) < 128:      return ch
+    return _CHARMAP.get(ch, '')
+
+def _json_body_wrap(src, key, dst, width, max_lines=0):
+    """Stream JSON string 'key' from file src (HTML content), strip tags,
+    use </p> as paragraph separator, decode entities, word-wrap, write to dst.
+    Reads src in _CHUNK pieces; never holds more than one word+line in RAM.
+    max_lines: stop after this many lines and append a truncation notice (0=unlimited)."""
     needle = '"' + key + '":"'
     carry  = ''
     found  = False
     word   = ''
     line   = ''
+    in_tag = False
+    tag    = ''
+    in_ent = False
+    entity = ''
+    lines  = 0
+    trunc  = False
+
     with open(src) as f:
-        while True:
+        while not trunc:
             chunk = f.read(_CHUNK)
             data  = carry + chunk
             carry = ''
@@ -148,14 +176,16 @@ def _json_body_wrap(src, key, dst, width):
                 found = True
             i = 0
             done = False
-            while i < len(data):
+            while i < len(data) and not done and not trunc:
                 c = data[i]
+                # ── JSON escape ───────────────────────────────────────────────
                 if c == '\\':
                     if i + 1 < len(data):
                         nc = data[i + 1]
                         ch = ('"'  if nc == '"'  else
                               '\\' if nc == '\\' else
-                              ' '  if nc in 'nrt' else nc)
+                              '\n' if nc == 'n'  else
+                              ' '  if nc in 'rt' else nc)
                         i += 2
                     else:
                         carry = '\\'
@@ -164,49 +194,86 @@ def _json_body_wrap(src, key, dst, width):
                 else:
                     ch = c
                     i += 1
-                if ch == '"':
-                    done = True
-                    break
-                if ord(ch) >= 128:
-                    word += _CHARMAP.get(ch, '')
+                    if ch == '"':       # unescaped " = end of JSON string value
+                        done = True
+                        break
+                # ── HTML tag ──────────────────────────────────────────────────
+                if in_tag:
+                    if ch == '>':
+                        if tag.strip().lower().startswith('/p'):
+                            # </p>: flush word → line, write line + blank separator
+                            if word:
+                                while len(word) > width and not trunc:
+                                    if line:
+                                        dst.write(line + '\n'); lines += 1; line = ''
+                                        if max_lines and lines >= max_lines: trunc = True; break
+                                    dst.write(word[:width] + '\n'); lines += 1
+                                    if max_lines and lines >= max_lines: trunc = True; break
+                                    word = word[width:]
+                                if not trunc:
+                                    if not line:                              line = word
+                                    elif len(line)+1+len(word) <= width:     line += ' '+word
+                                    else: dst.write(line+'\n'); lines += 1; line = word
+                                    if max_lines and lines >= max_lines:     trunc = True
+                                word = ''
+                            if not trunc and line:
+                                dst.write(line + '\n'); lines += 1; line = ''
+                                if max_lines and lines >= max_lines: trunc = True
+                            if not trunc:
+                                dst.write('\n'); lines += 1
+                                if max_lines and lines >= max_lines: trunc = True
+                        in_tag = False; tag = ''
+                    elif len(tag) < 16:
+                        tag += ch
                     continue
-                if ch in ' \t\n\r':
+                # ── HTML entity ───────────────────────────────────────────────
+                if in_ent:
+                    if ch == ';':
+                        rep = _entity_char(entity); entity = ''; in_ent = False
+                        if rep: word += rep
+                    elif len(entity) > 8:
+                        entity = ''; in_ent = False
+                    else:
+                        entity += ch
+                    continue
+                # ── Normal character ──────────────────────────────────────────
+                if ch == '<':   in_tag = True; tag = ''
+                elif ch == '&': in_ent = True; entity = ''
+                elif ord(ch) >= 128: word += _CHARMAP.get(ch, '')
+                elif ch in ' \t\n\r':
                     if word:
-                        while len(word) > width:
+                        while len(word) > width and not trunc:
                             if line:
-                                dst.write(line + '\n')
-                                line = ''
-                            dst.write(word[:width] + '\n')
+                                dst.write(line + '\n'); lines += 1; line = ''
+                                if max_lines and lines >= max_lines: trunc = True; break
+                            dst.write(word[:width] + '\n'); lines += 1
+                            if max_lines and lines >= max_lines: trunc = True; break
                             word = word[width:]
-                        if not line:
-                            line = word
-                        elif len(line) + 1 + len(word) <= width:
-                            line += ' ' + word
-                        else:
-                            dst.write(line + '\n')
-                            line = word
+                        if not trunc:
+                            if not line:                              line = word
+                            elif len(line)+1+len(word) <= width:     line += ' '+word
+                            else: dst.write(line+'\n'); lines += 1; line = word
+                            if max_lines and lines >= max_lines:     trunc = True
                         word = ''
                 else:
                     word += ch
             if done or not chunk:
                 break
-    # flush remaining word and line
-    if word:
-        while len(word) > width:
-            if line:
-                dst.write(line + '\n')
-                line = ''
-            dst.write(word[:width] + '\n')
-            word = word[width:]
-        if not line:
-            line = word
-        elif len(line) + 1 + len(word) <= width:
-            line += ' ' + word
-        else:
+
+    if trunc:
+        dst.write('\n\n[article truncated]\n')
+    else:
+        # flush remaining word and line
+        if word:
+            while len(word) > width:
+                if line: dst.write(line + '\n'); line = ''
+                dst.write(word[:width] + '\n')
+                word = word[width:]
+            if not line:                              line = word
+            elif len(line)+1+len(word) <= width:     line += ' '+word
+            else:                                     dst.write(line+'\n'); line = word
+        if line:
             dst.write(line + '\n')
-            line = word
-    if line:
-        dst.write(line + '\n')
 
 # ── Fetch & store ─────────────────────────────────────────────────────────────
 def _fetch_and_store():
@@ -214,8 +281,8 @@ def _fetch_and_store():
     it with _CHUNK-byte reads. No large contiguous heap allocation needed.
     Returns number of articles stored, 0 on failure."""
     reconnect_wifi(wlan)
-    draw_banner("Fetching news, blanking...")
-    time.sleep_ms(2000)
+    draw_banner("Fetching news (black screen)")
+    time.sleep_ms(4000)
     gfx.cls(BLACK)
     try:
         sections = [s.strip() for s in NEWS_SECTIONS.split(',') if s.strip()]
@@ -234,7 +301,7 @@ def _fetch_and_store():
                 gc.collect()
                 r = urequests.get(
                     "https://content.guardianapis.com/search"
-                    "?section={}&show-fields=headline,bodyText"
+                    "?section={}&show-fields=headline,body"
                     "&page-size=1&page={}&api-key={}".format(
                         section, page, NEWS_API_KEY),
                     timeout=30)
@@ -264,7 +331,7 @@ def _fetch_and_store():
                     out.write((tlines[0] if tlines else '') + '\n')
                     out.write((tlines[1] if len(tlines) > 1 else '') + '\n')
                     out.write('---\n')
-                    _json_body_wrap('_ntmp', 'bodyText', out, CHARS_BODY)
+                    _json_body_wrap('_ntmp', 'body', out, CHARS_BODY, NEWS_BODY_LINES)
                 os.remove('_ntmp')
                 count += 1
                 del headline, tlines
