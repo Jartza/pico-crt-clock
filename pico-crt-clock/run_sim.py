@@ -80,6 +80,16 @@ _time.sleep_ms   = _sleep_ms
 class _SoftReset(BaseException):
     pass
 
+_did_soft_reset = False
+
+def _soft_reset():
+    global _did_soft_reset
+    _did_soft_reset = True
+    raise _SoftReset()
+
+def _reset_cause():
+    return machine.PWRON_RESET if not _did_soft_reset else machine.WDT_RESET + 1
+
 class _Pin:
     IN      = 0
     OUT     = 1
@@ -98,20 +108,12 @@ class _Pin:
             return self._sim.value()
         self._sim._low = not bool(v)
 
-def _soft_reset():
-    raise _SoftReset()
-
-class _RTC:
-    _mem = b''   # class variable — persists across soft_reset, clears on simulator restart
-    def memory(self, data=None):
-        if data is None:
-            return _RTC._mem
-        _RTC._mem = data
-
-machine            = types.ModuleType('machine')
-machine.Pin        = _Pin
-machine.RTC        = _RTC
-machine.soft_reset = _soft_reset
+machine               = types.ModuleType('machine')
+machine.Pin           = _Pin
+machine.PWRON_RESET   = 1
+machine.WDT_RESET     = 3
+machine.reset_cause   = _reset_cause
+machine.soft_reset    = _soft_reset
 sys.modules['machine'] = machine
 
 # -- mock 'network' module -----------------------------------------------------
