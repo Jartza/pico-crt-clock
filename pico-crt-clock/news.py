@@ -448,7 +448,9 @@ def _show_article(filename, pin, detail_pin=None, hold_ms=None):
             # fits on one screen — initial hold was enough, move on
             return None
 
-        # Smooth scroll: 1 px/frame, new body line every LINE_H pixels
+        # Smooth scroll: 1 px/frame, new body line every LINE_H pixels.
+        # Print the incoming line at 192-sub_px each frame so it rises into
+        # view clipped at the bottom edge rather than popping in all at once.
         sub_px = 0
         while nxtline is not None:
             if pin is not None and pin.value():
@@ -460,9 +462,9 @@ def _show_article(filename, pin, detail_pin=None, hold_ms=None):
             gfx.scroll_up(BLACK, 1)
             _draw_header(t1, t2)
             sub_px += 1
+            gfx.print_string(0, 192 - sub_px, nxtline, BLACK, WHITE)
             if sub_px == LINE_H:
                 sub_px = 0
-                gfx.print_string(0, 192 - LINE_H, nxtline, BLACK, WHITE)
                 nxt     = f.readline()
                 nxtline = nxt.rstrip() if nxt else None
             time.sleep_ms(SCROLL_DELAY_MS)
