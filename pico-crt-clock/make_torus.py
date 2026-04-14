@@ -3,7 +3,7 @@
 # Pre-computes the torus LUT data and writes torus.bin.
 # Run on PC whenever any parameter changes, then mpremote the bin to the Pico.
 # On RP2040, loading from bin is much faster than recomputing (no float trig at boot).
-# All parameters live here; clock_alt.py reads them from the bin at runtime.
+# All parameters live here; torus.py reads them from the bin at runtime.
 
 import struct
 from math import sin, cos
