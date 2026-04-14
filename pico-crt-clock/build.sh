@@ -59,7 +59,7 @@ PIO_SRC="$ROOT/pico-mposite"
 
 PATCH_MP="$SCRIPT_DIR/patches/micropython-no-thread.patch"
 
-# -- parse arguments -----------------------------------------------------------
+# Parse arguments
 VARIANT=""
 C64FONT=0
 
@@ -98,7 +98,23 @@ PATCH_PM_FONT=""
 CMAKE_EXTRA=""
 [ "$VARIANT" = "buffer" ] && CMAKE_EXTRA="-DUSE_COLOUR_LUT=1"
 
-# -- patch helpers --------------------------------------------------------------
+# CMake cache helpers
+reset_stale_cmake_build_dir() {
+    local dir="$1"
+    local cache="$dir/CMakeCache.txt"
+    [ -f "$cache" ] || return 0
+
+    # CMake caches embed absolute source/build paths. If the repo was moved,
+    # reusing that cache fails with "does not match the source used to generate".
+    if grep -Fq "$ROOT" "$cache"; then
+        return 0
+    fi
+
+    echo "Removing stale CMake cache: $dir"
+    rm -rf "$dir"
+}
+
+# Patch helpers
 apply_patch() {
     local repo="$1" patchfile="$2"
     if git -C "$repo" apply --check --ignore-whitespace "$patchfile" 2>/dev/null; then
@@ -130,12 +146,14 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# -- 1. initialise submodules --------------------------------------------------
+# 1. Initialise submodules
 echo "Initialising submodules..."
+reset_stale_cmake_build_dir "$MP_PORT/build-$BOARD"
+reset_stale_cmake_build_dir "$BUILD_DIR"
 git -C "$ROOT" submodule update --init
 make -C "$MP_PORT" BOARD=$BOARD submodules
 
-# -- 2. apply patches ----------------------------------------------------------
+# 2. Apply patches
 FONT_LABEL=""
 [ "$C64FONT" = "1" ] && FONT_LABEL=", font: c64"
 echo "Applying patches (variant: $VARIANT$FONT_LABEL)..."
@@ -146,13 +164,13 @@ apply_patch "$ROOT/pico-mposite" "$PATCH_PM_SCANLINE"
 [ -n "$PATCH_PM_VARIANT" ] && apply_patch "$ROOT/pico-mposite" "$PATCH_PM_VARIANT"
 [ -n "$PATCH_PM_FONT" ]    && apply_patch "$ROOT/pico-mposite" "$PATCH_PM_FONT"
 
-# -- 3. build mpy-cross if needed ----------------------------------------------
+# 3. Build mpy-cross if needed
 if [ ! -f "$ROOT/micropython/mpy-cross/build/mpy-cross" ]; then
     echo "Building mpy-cross..."
     make -C "$ROOT/micropython/mpy-cross"
 fi
 
-# -- 4. cmake configure + pioasm -----------------------------------------------
+# 4. CMake configure + pioasm
 if [ ! -f "$PIOASM" ]; then
     echo "Configuring cmake (build dir: $BUILD_DIR, variant: $VARIANT)..."
     cmake -S "$MP_PORT" -B "$BUILD_DIR" \
@@ -170,7 +188,7 @@ echo "Generating PIO headers..."
 "$PIOASM" "$PIO_SRC/cvideo_sync.pio" "$SCRIPT_DIR/cvideo_sync.pio.h"
 "$PIOASM" "$PIO_SRC/cvideo_data.pio" "$SCRIPT_DIR/cvideo_data.pio.h"
 
-# -- 5. build firmware ---------------------------------------------------------
+# 5. Build firmware
 echo "Building MicroPython firmware with gfx module (variant: $VARIANT$FONT_LABEL)..."
 make -C "$BUILD_DIR" -j$(nproc)
 
