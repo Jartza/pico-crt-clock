@@ -388,10 +388,16 @@ article only for stories that catch your interest.
 
 **Getting a Guardian API key:**
 
-1. Register for a free developer account at https://open-platform.theguardian.com
-2. Create an application — the free tier allows 5000 requests/day, which is more
-   than enough for normal use with the default settings
-3. Copy the API key into `config.py` as `NEWS_API_KEY`
+You need your own Guardian Open Platform API key for news mode. The example
+value in this repository is only a placeholder.
+
+1. Open https://open-platform.theguardian.com and register for a developer account
+2. Create an application to get a Content API key
+3. Copy your key into `config.py` as `NEWS_API_KEY`
+4. Do not commit your real key to Git
+
+The free tier allows 5000 requests/day, which is more than enough for normal
+use with the default settings.
 
 Articles are cached to flash in `newscache/` so re-entering news mode within
 `NEWS_INTERVAL` seconds does not trigger a new fetch. The cache is refreshed
@@ -449,7 +455,7 @@ FORECAST_NEXT_DAY_HOUR = 18        # hour after which forecast shows tomorrow fi
 ### News
 
 ```python
-NEWS_API_KEY    = "your-guardian-api-key"
+NEWS_API_KEY    = "your-own-guardian-api-key"
 NEWS_SECTIONS   = "world:6,technology:4,politics:6"  # section:count; count defaults to NEWS_COUNT
 NEWS_COUNT      = 4      # default articles per section (when no count given in NEWS_SECTIONS)
 NEWS_INTERVAL   = 2 * 60 * 60   # cache refresh interval (seconds)
@@ -465,6 +471,9 @@ NEWS_BODY_LINES = 105    # max wrapped lines stored per article (0 = unlimited)
 NEWS_SCROLL_SPEED = 150  # extra ms delay per pixel (larger = slower scroll)
                          # 125 ≈ one row per second
 ```
+
+`NEWS_API_KEY` must be your own key from the Guardian Open Platform:
+https://open-platform.theguardian.com
 
 Available Guardian sections include: `world`, `technology`, `science`,
 `business`, `environment`, `politics`, `culture`, `sport`, and many more.
