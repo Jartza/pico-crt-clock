@@ -429,7 +429,7 @@ def _draw_header(t1, t2, section=''):
         gfx.line(0, TITLE_Y2 - 1, 255, TITLE_Y2 - 1, BLACK)
         gfx.print_string((256 - len(t2) * 8) // 2, TITLE_Y2, t2, BLACK, WHITE)
     gfx.line(0, SEP_Y - 1, 255, SEP_Y - 1, BLACK)
-    gfx.line(0, SEP_Y,     255, SEP_Y,     WHITE)
+    gfx.line(0, SEP_Y,     255, SEP_Y,     7)
 
 def _poll_pin(pin, ms, detail_pin=None, d_state=None):
     """Sleep up to ms milliseconds.
@@ -465,7 +465,7 @@ def _show_article(filename, pin, detail_pin=None, hold_ms=None):
         gfx.print_string((256 - len(t1)  * 8) // 2, TITLE_Y1, t1,  BLACK, WHITE)
         if t2:
             gfx.print_string((256 - len(t2) * 8) // 2, TITLE_Y2, t2, BLACK, WHITE)
-        gfx.line(0, SEP_Y, 255, SEP_Y, WHITE)
+        gfx.line(0, SEP_Y, 255, SEP_Y, 7)
         shown = 0
         for _ in range(BODY_LINES):
             line = f.readline()
