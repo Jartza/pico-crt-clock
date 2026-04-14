@@ -5,16 +5,19 @@ from config import *
 from common import *
 
 # ── Layout ────────────────────────────────────────────────────────────────────
-# Title:  2 lines × 2× font (16 px/char wide, 16 px tall) → 16 chars/line
-# Sep:    1 px white line at y=33
-# Body:   1× font (8 px/char wide, 8 px tall) → 32 chars/line, 19 lines visible
-TITLE_Y1    = 0
-TITLE_Y2    = 16
+# Clock:  y=0,  1× font → time + date on one line
+# Gap:    y=8–15 (empty)
+# Title:  y=16 and y=24, 1× font → 32 chars/line
+# Sep:    1 px white line at y=33  (unchanged)
+# Body:   1× font, 32 chars/line, 19 lines visible  (unchanged)
+CLOCK_Y     = 0
+TITLE_Y1    = 16
+TITLE_Y2    = 24
 SEP_Y       = 33
 BODY_START  = 40
 LINE_H      = 8
 BODY_LINES  = (192 - BODY_START) // LINE_H   # 19
-CHARS_TITLE = 256 // 16   # 16
+CHARS_TITLE = 256 // 8    # 32  (1× font, same as body)
 CHARS_BODY  = 256 // 8    # 32
 
 HOLD_MS         = NEWS_HOLD       * 1000
@@ -379,17 +382,37 @@ def _list_files():
         return []
 
 # ── Drawing ───────────────────────────────────────────────────────────────────
+def _header_time():
+    """Return a formatted local-time + date string for the header clock line."""
+    ts = time.time()
+    t  = time.localtime(ts + _utc_offset(ts))
+    h, m = t[3], t[4]
+    if CLOCK_12H:
+        sfx  = 'am' if h < 12 else 'pm'
+        h    = h % 12 or 12
+        tstr = '{}:{:02d}{}'.format(h, m, sfx)
+    else:
+        tstr = '{:02d}:{:02d}'.format(h, m)
+    d, mo, yr = t[2], t[1], t[0]
+    sep = DATE_SEP
+    if DATE_ORDER == 'MDY':   dstr = '{}{}{}{}{}'.format(mo, sep, d,  sep, yr)
+    elif DATE_ORDER == 'YMD': dstr = '{}{}{}{}{}'.format(yr, sep, mo, sep, d)
+    else:                     dstr = '{}{}{}{}{}'.format(d,  sep, mo, sep, yr)
+    return tstr + '  ' + dstr
+
 def _draw_header(t1, t2):
-    """Redraw pinned title + separator each scroll step with minimal flicker.
-    Draws each element in black one pixel above (erasing the scrolled copy),
-    then redraws at the correct position."""
-    x1 = (256 - len(t1) * 16) // 2
-    gfx.print_string_2x(x1, TITLE_Y1 - 1, t1, BLACK, BLACK)
-    gfx.print_string_2x(x1, TITLE_Y1,     t1, BLACK, WHITE)
+    """Redraw pinned clock + title + separator each scroll step with minimal flicker.
+    Clock at y=0 is scrolled off screen by scroll_up so just redrawn fresh.
+    Title lines erased at y-1 in BLACK then redrawn at y in WHITE."""
+    clk = _header_time()
+    gfx.print_string((256 - len(clk) * 8) // 2, CLOCK_Y, clk, BLACK, WHITE)
+    x1 = (256 - len(t1) * 8) // 2
+    gfx.print_string(x1, TITLE_Y1 - 1, t1, BLACK, BLACK)
+    gfx.print_string(x1, TITLE_Y1,     t1, BLACK, WHITE)
     if t2:
-        x2 = (256 - len(t2) * 16) // 2
-        gfx.print_string_2x(x2, TITLE_Y2 - 1, t2, BLACK, BLACK)
-        gfx.print_string_2x(x2, TITLE_Y2,     t2, BLACK, WHITE)
+        x2 = (256 - len(t2) * 8) // 2
+        gfx.print_string(x2, TITLE_Y2 - 1, t2, BLACK, BLACK)
+        gfx.print_string(x2, TITLE_Y2,     t2, BLACK, WHITE)
     gfx.line(0, SEP_Y - 1, 255, SEP_Y - 1, BLACK)
     gfx.line(0, SEP_Y,     255, SEP_Y,     WHITE)
 
@@ -419,11 +442,13 @@ def _show_article(filename, pin, detail_pin=None, hold_ms=None):
         t2 = f.readline().rstrip()
         f.readline()   # skip '---'
 
-        # Initial screen: cls clears everything, then draw title + body directly
+        # Initial screen: cls clears everything, then draw header + body directly
         gfx.cls(BLACK)
-        gfx.print_string_2x((256 - len(t1) * 16) // 2, TITLE_Y1, t1, BLACK, WHITE)
+        clk = _header_time()
+        gfx.print_string((256 - len(clk) * 8) // 2, CLOCK_Y,  clk, BLACK, WHITE)
+        gfx.print_string((256 - len(t1)  * 8) // 2, TITLE_Y1, t1,  BLACK, WHITE)
         if t2:
-            gfx.print_string_2x((256 - len(t2) * 16) // 2, TITLE_Y2, t2, BLACK, WHITE)
+            gfx.print_string((256 - len(t2) * 8) // 2, TITLE_Y2, t2, BLACK, WHITE)
         gfx.line(0, SEP_Y, 255, SEP_Y, WHITE)
         shown = 0
         for _ in range(BODY_LINES):
