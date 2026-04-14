@@ -173,8 +173,13 @@ def run(pin=None):
     _load_torus()
 
     last_day = None
+    pincounter = 0
 
-    while pin is None or not pin.value():
+    while True:
+        active, pincounter = check_pin_stable(pin, 0, pincounter)
+        if not active:
+            break
+
         now = time.time()
         t   = time.localtime(now + _utc_offset(now))
         yr, mon, day, h, m, s = t[0], t[1], t[2], t[3], t[4], t[5]

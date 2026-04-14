@@ -451,6 +451,7 @@ def _show_article(filename, pin, detail_pin=None, hold_ms=None):
     """Display one article with smooth scroll if content exceeds screen height.
     Returns None on normal completion, 'MODE' if mode pin released,
     'SWAP' if the detail switch changed (screen cleared, same article re-shown)."""
+
     if hold_ms is None:
         hold_ms = HOLD_MS
     d_state = detail_pin.value() if detail_pin is not None else None

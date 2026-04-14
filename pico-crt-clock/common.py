@@ -13,7 +13,7 @@ __all__ = [
     'gfx', 'time', 'ntptime',
     'BLACK', 'WHITE', 'WIFI_TIMEOUT_MS',
     '_weekday', '_last_sunday', '_utc_offset',
-    'draw_banner', 'connect_wifi', 'reconnect_wifi', 'sync_ntp',
+    'draw_banner', 'connect_wifi', 'reconnect_wifi', 'sync_ntp', 'check_pin_stable',
 ]
 
 BLACK = 0
@@ -120,3 +120,15 @@ def sync_ntp(clear=False):
     except Exception:
         gfx.cls(BLACK)
         return False
+
+# For mode switching: check if a pin is active over threshold counts, to avoid spurious triggers from noise or bouncing.
+def check_pin_stable(pin, expected, counter, threshold=25):
+    if pin is None:
+        return True, 0
+
+    value = pin.value()
+    if value == expected:
+        return True, 0
+
+    counter += 1
+    return counter < threshold, counter

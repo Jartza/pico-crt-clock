@@ -236,8 +236,13 @@ def run(pin=None):
     last_move      = time.ticks_ms()
     ox, oy = 0, 0
     vx, vy = 1, 1
+    pincounter = 0
 
-    while pin is None or not pin.value():
+    while True:
+        active, pincounter = check_pin_stable(pin, 0, pincounter)
+        if not active:
+            break
+
         now = time.time()
         t   = time.localtime(now + _utc_offset(now))
         yr, mon, day = t[0], t[1], t[2]
