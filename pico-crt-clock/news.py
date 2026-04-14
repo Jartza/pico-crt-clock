@@ -415,18 +415,18 @@ def _header_time(section=''):
     return line
 
 def _draw_header(t1, t2, section=''):
-    """Redraw pinned clock + title + separator each scroll step with minimal flicker.
-    Clock at y=0 is scrolled off screen by scroll_up so just redrawn fresh.
-    Title lines erased at y-1 in BLACK then redrawn at y in WHITE."""
+    """Redraw pinned clock + title + separator each scroll step.
+    Clock at y=0: print_string background is enough (scroll artifact falls off-screen).
+    Title lines: full-width line erase at y-1 before each print (title may be shorter
+    than the full row, leaving columns outside the string width uncleared otherwise).
+    Separator: explicit erase at SEP_Y-1 (gfx.line has no background)."""
     clk = _header_time(section)
-    gfx.print_string((256 - len(clk) * 8) // 2, CLOCK_Y, clk, BLACK, WHITE)
-    x1 = (256 - len(t1) * 8) // 2
-    gfx.print_string(x1, TITLE_Y1 - 1, t1, BLACK, BLACK)
-    gfx.print_string(x1, TITLE_Y1,     t1, BLACK, WHITE)
+    gfx.print_string((256 - len(clk) * 8) // 2, CLOCK_Y,  clk, BLACK, WHITE)
+    gfx.line(0, TITLE_Y1 - 1, 255, TITLE_Y1 - 1, BLACK)
+    gfx.print_string((256 - len(t1)  * 8) // 2, TITLE_Y1, t1,  BLACK, WHITE)
     if t2:
-        x2 = (256 - len(t2) * 8) // 2
-        gfx.print_string(x2, TITLE_Y2 - 1, t2, BLACK, BLACK)
-        gfx.print_string(x2, TITLE_Y2,     t2, BLACK, WHITE)
+        gfx.line(0, TITLE_Y2 - 1, 255, TITLE_Y2 - 1, BLACK)
+        gfx.print_string((256 - len(t2) * 8) // 2, TITLE_Y2, t2, BLACK, WHITE)
     gfx.line(0, SEP_Y - 1, 255, SEP_Y - 1, BLACK)
     gfx.line(0, SEP_Y,     255, SEP_Y,     WHITE)
 
