@@ -433,6 +433,7 @@ def _draw_header(t1, t2, section=''):
         gfx.print_string((256 - len(t2) * 8) // 2, TITLE_Y2, t2, BLACK, WHITE)
     gfx.line(0, SEP_Y - 1, 255, SEP_Y - 1, BLACK)
     gfx.line(0, SEP_Y,     255, SEP_Y,     7)
+    gfx.line(0, SEP_Y + 6, 255, SEP_Y + 6, BLACK)
 
 # Article display
 def _show_article(filename, pin, mode_counter, mode_expected,
