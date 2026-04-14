@@ -107,7 +107,7 @@ def _shade_faces(bnx, bny, bnz, shades,
             if shade > 15: shade = 15
             psh[k] = shade
 
-def draw_demo(time_str):
+def draw_demo(time_str, date_str):
     global _ay_phase, _wb_phase, _txt_phase
 
     N, M = _TORUS_N, _TORUS_M
@@ -152,9 +152,11 @@ def draw_demo(time_str):
         gfx.polygon(tpx[a], tpy[a], tpx[b], tpy[b],
                     tpx[c], tpy[c], tpx[d], tpy[d], shades[k], True)
 
-    # Time overlay drifts horizontally — integer LUT, no trig
-    text_x = (_sin_lut[txt_idx] * 88 >> 8) + 96
-    gfx.print_string(text_x, 184, time_str, BLACK, WHITE)
+    # Time + date overlay drifts horizontally together — integer LUT, no trig
+    # Amplitude 72 keeps a 10-char date string within screen bounds
+    text_x = (_sin_lut[txt_idx] * 72 >> 8) + 96
+    gfx.print_string(text_x, 176, time_str, BLACK, WHITE)
+    gfx.print_string(text_x, 184, date_str, BLACK, WHITE)
 
 def run(pin=None):
     gfx.init()
@@ -187,6 +189,10 @@ def run(pin=None):
             time_str = "{}:{:02d}:{:02d}{}".format(h12, m, s, "am" if h < 12 else "pm")
         else:
             time_str = "{:02d}:{:02d}:{:02d}".format(h, m, s)
+        sep = DATE_SEP
+        if DATE_ORDER == 'MDY':   date_str = '{}{}{}{}{}'.format(mon, sep, day, sep, yr)
+        elif DATE_ORDER == 'YMD': date_str = '{}{}{}{}{}'.format(yr,  sep, mon, sep, day)
+        else:                     date_str = '{}{}{}{}{}'.format(day, sep, mon, sep, yr)
 
-        draw_demo(time_str)
+        draw_demo(time_str, date_str)
         time.sleep_ms(10)

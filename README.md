@@ -450,8 +450,8 @@ FORECAST_NEXT_DAY_HOUR = 18        # hour after which forecast shows tomorrow fi
 
 ```python
 NEWS_API_KEY    = "your-guardian-api-key"
-NEWS_SECTIONS   = "world,technology,science"   # Guardian sections, comma-separated
-NEWS_COUNT      = 4      # articles to fetch per section
+NEWS_SECTIONS   = "world:6,technology:4,politics:6"  # section:count; count defaults to NEWS_COUNT
+NEWS_COUNT      = 4      # default articles per section (when no count given in NEWS_SECTIONS)
 NEWS_INTERVAL   = 2 * 60 * 60   # cache refresh interval (seconds)
 
 NEWS_HOLD       = 15     # seconds to hold full article initial screen before scroll

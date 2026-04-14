@@ -2,14 +2,14 @@ WIFI_SSID = "wifiname"
 WIFI_PASS = "password"
 
 # The Guardian open platform API key — get a free key at https://open-platform.theguardian.com
-NEWS_API_KEY = "replace-with-your-api-key"
+NEWS_API_KEY = "YOUR_GUARDIAN_API_KEY_HERE"
 
-# Guardian sections to fetch from, comma-separated.
-# Examples: technology, science, world, business, environment, politics
-# Articles are fetched from each section and interleaved.
-NEWS_SECTIONS = "world,technology,politics"
+# Guardian sections to fetch from, with optional per-section article count.
+# Format: "section:count,section:count,..." — count falls back to NEWS_COUNT if omitted.
+# Examples: technology, science, world, business, environment, politics, sport, culture
+NEWS_SECTIONS = "world:6,technology:4,politics:6"
 
-# How many articles to fetch per section
+# Default articles per section (used when no count given in NEWS_SECTIONS)
 NEWS_COUNT = 4
 
 # How often to refresh news (seconds); free tier allows 5000 req/day

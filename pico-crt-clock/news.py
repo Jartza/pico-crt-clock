@@ -315,13 +315,22 @@ def _fetch_and_store():
             if fn.startswith('news_') and fn.endswith('.txt'):
                 os.remove(NEWS_DIR + '/' + fn)
 
+        # Parse "section:count" pairs; fall back to NEWS_COUNT if no count given
+        sec_counts = []
+        for s in sections:
+            if ':' in s:
+                name, cnt = s.rsplit(':', 1)
+                sec_counts.append((name.strip(), int(cnt.strip())))
+            else:
+                sec_counts.append((s, NEWS_COUNT))
+
         count = 0
-        for page in range(1, NEWS_COUNT + 1):
-            for section in sections:
+        for section, sec_n in sec_counts:
+            for page in range(1, sec_n + 1):
                 gc.collect()
                 r = urequests.get(
                     "https://content.guardianapis.com/search"
-                    "?section={}&show-fields=headline,trailText,body"
+                    "?section={}&type=article&show-fields=headline,trailText,body"
                     "&page-size=1&page={}&api-key={}".format(
                         section, page, NEWS_API_KEY),
                     timeout=30)
@@ -346,20 +355,22 @@ def _fetch_and_store():
 
                 tlines = _word_wrap(headline, CHARS_TITLE)[:2]
 
-                # Write summary file: title + trailText (HTML, so use same stripper as body)
+                # Write summary file: title + section + trailText (HTML, same stripper as body)
                 sumpath = '{}/news_{:02d}_sum.txt'.format(NEWS_DIR, count)
                 with open(sumpath, 'w') as out:
                     out.write((tlines[0] if tlines else '') + '\n')
                     out.write((tlines[1] if len(tlines) > 1 else '') + '\n')
+                    out.write(section + '\n')
                     out.write('---\n')
                     _json_body_wrap('_ntmp', 'trailText', out, CHARS_BODY, 0)
                 gc.collect()
 
-                # Write full article file: title + HTML body streamed and stripped
+                # Write full article file: title + section + HTML body streamed and stripped
                 outpath = '{}/news_{:02d}.txt'.format(NEWS_DIR, count)
                 with open(outpath, 'w') as out:
                     out.write((tlines[0] if tlines else '') + '\n')
                     out.write((tlines[1] if len(tlines) > 1 else '') + '\n')
+                    out.write(section + '\n')
                     out.write('---\n')
                     _json_body_wrap('_ntmp', 'body', out, CHARS_BODY, NEWS_BODY_LINES)
                 os.remove('_ntmp')
@@ -382,8 +393,8 @@ def _list_files():
         return []
 
 # ── Drawing ───────────────────────────────────────────────────────────────────
-def _header_time():
-    """Return a formatted local-time + date string for the header clock line."""
+def _header_time(section=''):
+    """Return a formatted local-time + date + section string for the header clock line."""
     ts = time.time()
     t  = time.localtime(ts + _utc_offset(ts))
     h, m = t[3], t[4]
@@ -398,13 +409,16 @@ def _header_time():
     if DATE_ORDER == 'MDY':   dstr = '{}{}{}{}{}'.format(mo, sep, d,  sep, yr)
     elif DATE_ORDER == 'YMD': dstr = '{}{}{}{}{}'.format(yr, sep, mo, sep, d)
     else:                     dstr = '{}{}{}{}{}'.format(d,  sep, mo, sep, yr)
-    return tstr + '  ' + dstr
+    line = tstr + '  ' + dstr
+    if section:
+        line += '  ' + section[0].upper() + section[1:]
+    return line
 
-def _draw_header(t1, t2):
+def _draw_header(t1, t2, section=''):
     """Redraw pinned clock + title + separator each scroll step with minimal flicker.
     Clock at y=0 is scrolled off screen by scroll_up so just redrawn fresh.
     Title lines erased at y-1 in BLACK then redrawn at y in WHITE."""
-    clk = _header_time()
+    clk = _header_time(section)
     gfx.print_string((256 - len(clk) * 8) // 2, CLOCK_Y, clk, BLACK, WHITE)
     x1 = (256 - len(t1) * 8) // 2
     gfx.print_string(x1, TITLE_Y1 - 1, t1, BLACK, BLACK)
@@ -438,13 +452,14 @@ def _show_article(filename, pin, detail_pin=None, hold_ms=None):
     d_state = detail_pin.value() if detail_pin is not None else None
 
     with open(filename) as f:
-        t1 = f.readline().rstrip()
-        t2 = f.readline().rstrip()
-        f.readline()   # skip '---'
+        t1      = f.readline().rstrip()
+        t2      = f.readline().rstrip()
+        section = f.readline().rstrip()   # section name (e.g. "world")
+        f.readline()                      # skip '---'
 
         # Initial screen: cls clears everything, then draw header + body directly
         gfx.cls(BLACK)
-        clk = _header_time()
+        clk = _header_time(section)
         gfx.print_string((256 - len(clk) * 8) // 2, CLOCK_Y,  clk, BLACK, WHITE)
         gfx.print_string((256 - len(t1)  * 8) // 2, TITLE_Y1, t1,  BLACK, WHITE)
         if t2:
@@ -485,7 +500,7 @@ def _show_article(filename, pin, detail_pin=None, hold_ms=None):
                 return 'SWAP'
             gfx.wait_vblank()
             gfx.scroll_up(BLACK, 1)
-            _draw_header(t1, t2)
+            _draw_header(t1, t2, section)
             sub_px += 1
             gfx.print_string(0, 192 - sub_px, nxtline, BLACK, WHITE)
             if sub_px == LINE_H:
