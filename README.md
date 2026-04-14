@@ -146,6 +146,7 @@ display end.
 ```
 pico-crt-clock/           project sources; build from here
   build.sh                  one-shot build + patch script
+  upload.sh                 helper-script to upload files to Pico W
   micropython.cmake         build-system glue (USER_C_MODULES)
   gfx_queue.h               shared ring buffer + command struct (core0 <-> core1)
   gfx_core1.c               core1 entry point and command dispatcher
@@ -463,9 +464,11 @@ FORECAST_NEXT_DAY_HOUR = 18        # hour after which forecast shows tomorrow fi
 
 ```python
 NEWS_API_KEY    = "your-own-guardian-api-key"
-NEWS_SECTIONS   = "world:6,technology:4,politics:6"  # section:count; count defaults to NEWS_COUNT
+# section:count; count defaults to NEWS_COUNT
+NEWS_SECTIONS   = "world:6,technology:4,politics:6"
 NEWS_COUNT      = 4      # default articles per section (when no count given in NEWS_SECTIONS)
-NEWS_INTERVAL   = 2 * 60 * 60   # cache refresh interval (seconds)
+# cache refresh interval (seconds)
+NEWS_INTERVAL   = 2 * 60 * 60
 
 NEWS_HOLD       = 15     # seconds to hold full article initial screen before scroll
 NEWS_HOLD_SUM   = 8      # seconds to hold summary (never scrolls)

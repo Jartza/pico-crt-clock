@@ -36,7 +36,7 @@ wlan = None
 # Text
 # Map non-ASCII characters the font can't render to ASCII equivalents.
 _CHARMAP = {
-    '\u00a9': '(c)', '\u00ae': '(R)',           # copyright, registered trademark
+    '\u00a9': '(c)', '\u00ae': '(R)',            # copyright, registered trademark
     '\u2013': '-',   '\u2014': '-',              # en/em dash
     '\u2018': "'",   '\u2019': "'",              # curly single quotes
     '\u201c': '"',   '\u201d': '"',              # curly double quotes
