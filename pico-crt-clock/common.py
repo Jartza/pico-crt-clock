@@ -121,8 +121,11 @@ def sync_ntp(clear=False):
         gfx.cls(BLACK)
         return False
 
-# For mode switching: check if a pin is active over threshold counts, to avoid spurious triggers from noise or bouncing.
-def check_pin_stable(pin, expected, counter, threshold=25):
+# For mode switching: require a pin mismatch to persist for threshold milliseconds
+# before treating it as a real state change. The counter stores the first
+# mismatch timestamp from time.ticks_ms(), so debounce duration is independent
+# of loop speed.
+def check_pin_stable(pin, expected, counter, threshold=250):
     if pin is None:
         return True, 0
 
@@ -130,5 +133,8 @@ def check_pin_stable(pin, expected, counter, threshold=25):
     if value == expected:
         return True, 0
 
-    counter += 1
-    return counter < threshold, counter
+    now = time.ticks_ms()
+    if counter == 0:
+        counter = now
+
+    return time.ticks_diff(now, counter) < threshold, counter

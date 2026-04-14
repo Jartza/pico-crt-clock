@@ -434,27 +434,14 @@ def _draw_header(t1, t2, section=''):
     gfx.line(0, SEP_Y - 1, 255, SEP_Y - 1, BLACK)
     gfx.line(0, SEP_Y,     255, SEP_Y,     7)
 
-def _poll_pin(pin, ms, detail_pin=None, d_state=None):
-    """Sleep up to ms milliseconds.
-    Returns 'MODE' if mode pin released, 'SWAP' if detail_pin changed, None on timeout."""
-    deadline = time.ticks_add(time.ticks_ms(), ms)
-    while time.ticks_diff(deadline, time.ticks_ms()) > 0:
-        if pin is not None and pin.value():
-            return 'MODE'
-        if detail_pin is not None and detail_pin.value() != d_state:
-            return 'SWAP'
-        time.sleep_ms(50)
-    return None
-
 # Article display
-def _show_article(filename, pin, detail_pin=None, hold_ms=None):
+def _show_article(filename, pin, mode_counter, mode_expected,
+                  detail_pin=None, detail_counter=0, detail_expected=1, hold_ms=None):
     """Display one article with smooth scroll if content exceeds screen height.
-    Returns None on normal completion, 'MODE' if mode pin released,
-    'SWAP' if the detail switch changed (screen cleared, same article re-shown)."""
+    Returns (result, mode_counter, detail_counter, detail_expected)."""
 
     if hold_ms is None:
         hold_ms = HOLD_MS
-    d_state = detail_pin.value() if detail_pin is not None else None
 
     with open(filename) as f:
         t1      = f.readline().rstrip()
@@ -483,26 +470,34 @@ def _show_article(filename, pin, detail_pin=None, hold_ms=None):
         nxtline = nxt.rstrip() if nxt else None
 
         gfx.wait_vblank()   # present the initial frame before any hold begins
-        result = _poll_pin(pin, hold_ms, detail_pin, d_state)
-        if result == 'SWAP':
-            gfx.cls(BLACK)
-            return 'SWAP'
-        if result == 'MODE':
-            return 'MODE'
+        deadline = time.ticks_add(time.ticks_ms(), hold_ms)
+        while time.ticks_diff(deadline, time.ticks_ms()) > 0:
+            active, mode_counter = check_pin_stable(pin, mode_expected, mode_counter)
+            if not active:
+                return 'MODE', mode_counter, detail_counter, detail_expected
+            active, detail_counter = check_pin_stable(detail_pin, detail_expected, detail_counter)
+            if not active:
+                gfx.cls(BLACK)
+                detail_expected = detail_pin.value()
+                return 'SWAP', mode_counter, 0, detail_expected
+            time.sleep_ms(10)
         if nxtline is None:
             # fits on one screen - initial hold was enough, move on
-            return None
+            return None, mode_counter, detail_counter, detail_expected
 
         # Smooth scroll: 1 px/frame, new body line every LINE_H pixels.
         # Print the incoming line at 192-sub_px each frame so it rises into
         # view clipped at the bottom edge rather than popping in all at once.
         sub_px = 0
         while nxtline is not None:
-            if pin is not None and pin.value():
-                return 'MODE'
-            if detail_pin is not None and detail_pin.value() != d_state:
+            active, mode_counter = check_pin_stable(pin, mode_expected, mode_counter)
+            if not active:
+                return 'MODE', mode_counter, detail_counter, detail_expected
+            active, detail_counter = check_pin_stable(detail_pin, detail_expected, detail_counter)
+            if not active:
                 gfx.cls(BLACK)
-                return 'SWAP'
+                detail_expected = detail_pin.value()
+                return 'SWAP', mode_counter, 0, detail_expected
             gfx.wait_vblank()
             gfx.scroll_up(BLACK, 1)
             _draw_header(t1, t2, section)
@@ -514,13 +509,18 @@ def _show_article(filename, pin, detail_pin=None, hold_ms=None):
                 nxtline = nxt.rstrip() if nxt else None
             time.sleep_ms(SCROLL_DELAY_MS)
 
-    result = _poll_pin(pin, HOLD_AFTER_MS, detail_pin, d_state)
-    if result == 'SWAP':
-        gfx.cls(BLACK)
-        return 'SWAP'
-    if result == 'MODE':
-        return 'MODE'
-    return None
+    deadline = time.ticks_add(time.ticks_ms(), HOLD_AFTER_MS)
+    while time.ticks_diff(deadline, time.ticks_ms()) > 0:
+        active, mode_counter = check_pin_stable(pin, mode_expected, mode_counter)
+        if not active:
+            return 'MODE', mode_counter, detail_counter, detail_expected
+        active, detail_counter = check_pin_stable(detail_pin, detail_expected, detail_counter)
+        if not active:
+            gfx.cls(BLACK)
+            detail_expected = detail_pin.value()
+            return 'SWAP', mode_counter, 0, detail_expected
+        time.sleep_ms(10)
+    return None, mode_counter, detail_counter, detail_expected
 
 # Entry point
 def run(pin=None):
@@ -552,7 +552,16 @@ def run(pin=None):
     except OSError:
         last_fetch_ts = 0
 
-    while pin is None or not pin.value():
+    mode_expected = 0
+    mode_counter = 0
+    detail_expected = detail_pin.value()
+    detail_counter = 0
+
+    while True:
+        active, mode_counter = check_pin_stable(pin, mode_expected, mode_counter)
+        if not active:
+            return
+
         now   = time.time()
         files = _list_files()
 
@@ -565,17 +574,26 @@ def run(pin=None):
         if not files:
             gfx.cls(BLACK)
             gfx.print_string(16, 92, "News unavailable", BLACK, WHITE)
-            if _poll_pin(pin, 60000, detail_pin, detail_pin.value()) == 'MODE':
-                return
+            deadline = time.ticks_add(time.ticks_ms(), 60000)
+            while time.ticks_diff(deadline, time.ticks_ms()) > 0:
+                active, mode_counter = check_pin_stable(pin, mode_expected, mode_counter)
+                if not active:
+                    return
+                active, detail_counter = check_pin_stable(detail_pin, detail_expected, detail_counter)
+                if not active:
+                    detail_expected = detail_pin.value()
+                    break
+                time.sleep_ms(10)
             continue
 
         idx = 0
         while idx < len(files):
-            if pin is not None and pin.value():
+            active, mode_counter = check_pin_stable(pin, mode_expected, mode_counter)
+            if not active:
                 return
             # Select file based on detail switch: high = summary (default), low = full article
             base = files[idx]
-            if detail_pin.value():   # high = summary mode (hardware default, pull-up)
+            if detail_expected:   # high = summary mode (hardware default, pull-up)
                 spath = base[:-4] + '_sum.txt'
                 try:
                     os.stat(spath)
@@ -585,7 +603,9 @@ def run(pin=None):
             else:
                 show_file = base       # low = full article mode (switch to GND)
             hold = HOLD_SUM_MS if show_file != base else HOLD_MS
-            result = _show_article(show_file, pin, detail_pin, hold)
+            result, mode_counter, detail_counter, detail_expected = _show_article(
+                show_file, pin, mode_counter, mode_expected, detail_pin,
+                detail_counter, detail_expected, hold)
             if result == 'MODE':
                 return
             elif result == 'SWAP':
