@@ -8,10 +8,17 @@ engine running on the second RP2040 core.
 
 The `gfx` MicroPython module provides a general-purpose API for composite
 video output — pixel drawing, text, sprites, and screen control — usable for
-any MicroPython project that needs a B/W composite display. `clock.py` is the
-bundled example application: it displays a live clock, current temperature and
-wind speed, and a 3-day weather forecast with icons, fetched from
-[Open-Meteo](https://open-meteo.com) (no API key required).
+any MicroPython project that needs a B/W composite display.
+
+Three display modes are included, selected at boot by GPIO slide switches:
+
+| Mode | GPIO | Description |
+|---|---|---|
+| Clock / weather | GPIO 10 | Live clock, temperature, wind, 3-day forecast from [Open-Meteo](https://open-meteo.com) (no key needed) |
+| Torus demo | GPIO 11 | Animated 3D spinning torus rendered in real-time |
+| News reader | GPIO 12 | Scrolling Guardian API headlines with summary/detail switch on GPIO 13 |
+
+If no GPIO is pulled low the clock/weather mode runs as default.
 
 ---
 
@@ -144,13 +151,17 @@ pico-crt-clock/           project sources; build from here
   gfx_core1.c               core1 entry point and command dispatcher
   gfx_core1.h               gfx_core1_launch() declaration
   mod_gfx.c                 MicroPython C extension module "gfx"
-  main.py                   boot stub: imports clock, catches SystemExit
-  clock.py                  clock/weather application logic
-  config.py                 WiFi credentials, location, display options
+  main.py                   boot stub: reads GPIO mode switches, launches correct mode
+  common.py                 shared helpers: WiFi, NTP, banners, DST calculation
+  clock.py                  clock/weather application (mode 0)
+  torus.py                  spinning torus demo (mode 1)
+  news.py                   Guardian API news reader (mode 2)
+  config.py                 WiFi credentials, location, display options, news settings
   icons.py                  pre-generated weather icon bytearrays
   make_icons.py             PC-side icon generator (run to regenerate icons.py)
   gfx.py                    PC simulator mock of the gfx C extension (pygame)
   run_sim.py                runner for PC testing without hardware
+  newscache/                article cache written to flash during news fetch (auto-created)
   patches/
     micropython-no-thread.patch   disables MicroPython threading (see below)
     pico-mposite-common.patch     pico-mposite patch applied to all variants (DMA IRQ, FIFO, SRAM, GPIO drive, deinit)
@@ -274,14 +285,16 @@ After the Pico reboots, connect to PC:
 
 ```bash
 mpremote fs cp pico-crt-clock/main.py    :main.py
+mpremote fs cp pico-crt-clock/common.py  :common.py
 mpremote fs cp pico-crt-clock/clock.py   :clock.py
+mpremote fs cp pico-crt-clock/torus.py   :torus.py
+mpremote fs cp pico-crt-clock/news.py    :news.py
 mpremote fs cp pico-crt-clock/icons.py   :icons.py
 mpremote fs cp pico-crt-clock/config.py  :config.py
 ```
 
-Edit `config.py` first - it contains your WiFi credentials and all display
-options: location (lat/lon), timezone, DST, temperature and wind units,
-date format, and 12/24 hour clock.
+Edit `config.py` first — it contains your WiFi credentials and all display
+options. See [Configuration](#configuration) below for a full reference.
 
 To find your coordinates, right-click your location in
 [Google Maps](https://maps.google.com) and click the latitude/longitude
@@ -306,12 +319,146 @@ python run_sim.py --c64font   # Commodore 64 font
 ```
 
 `gfx.py` is a pygame-based mock of the `gfx` C extension. Network calls are
-always-connected mocks; weather is fetched live from Open-Meteo.
+always-connected mocks; weather and news are fetched live.
 Set `SCALE` in `gfx.py` to resize the window (default 3x).
 
 The `--c64font` flag selects the Commodore 64 lowercase+uppercase character set
 in the simulator, matching what `./build.sh <variant> --c64font` builds into
 the firmware. The window title shows which font is active.
+
+### Simulator GPIO keys
+
+| Key | Effect |
+|---|---|
+| `a` | Pull GPIO 10 low → clock/weather mode |
+| `b` | Pull GPIO 11 low → torus mode |
+| `c` | Pull GPIO 12 low → news mode |
+| `d` | Toggle GPIO 13 → news detail switch (summary / full article) |
+| `ESC` | Release all pins → default mode (clock/weather) |
+
+Pressing a mode key latches that mode until ESC is pressed, mirroring a
+physical sliding switch. `d` toggles independently of the mode pins.
+
+---
+
+## Modes
+
+### Mode 0 — Clock / weather (default)
+
+Displays the current time, date, indoor/outdoor temperature, wind speed, and a
+3-day weather forecast with icons. Weather data is fetched from
+[Open-Meteo](https://open-meteo.com) — no API key required.
+
+This mode runs automatically when no GPIO is pulled low (no switch connected).
+
+### Mode 1 — Torus demo
+
+Real-time 3D spinning torus rendered using fixed-point arithmetic on the RP2040.
+Connect a switch between GPIO 11 and GND to activate.
+
+### Mode 2 — News reader
+
+Fetches articles from [The Guardian open platform API](https://open-platform.theguardian.com)
+and displays them with a smooth scrolling view. A second slide switch on GPIO 13
+selects between summary (trailText) and full article view without rebooting.
+
+Connect a switch between GPIO 12 and GND to activate news mode.
+
+**GPIO 13 — summary / detail switch:**
+
+| GPIO 13 | Display |
+|---|---|
+| High (pull-up, default) | Short summary (trailText) — cycles quickly |
+| Low (switch to GND) | Full article — scrolls through the complete body text |
+
+Flipping the switch mid-article clears the screen and reloads the same story in
+the new mode. This lets you skim headlines in summary mode and switch to full
+article only for stories that catch your interest.
+
+**Getting a Guardian API key:**
+
+1. Register for a free developer account at https://open-platform.theguardian.com
+2. Create an application — the free tier allows 5000 requests/day, which is more
+   than enough for normal use with the default settings
+3. Copy the API key into `config.py` as `NEWS_API_KEY`
+
+Articles are cached to flash in `newscache/` so re-entering news mode within
+`NEWS_INTERVAL` seconds does not trigger a new fetch. The cache is refreshed
+automatically when the interval expires.
+
+> **Note:** Writing to flash briefly disrupts the composite video signal. The
+> screen blanks for a few seconds during fetch — this is normal.
+
+---
+
+## Configuration
+
+All settings live in `config.py`. Edit before deploying to the Pico.
+
+### WiFi
+
+```python
+WIFI_SSID = "your-network"
+WIFI_PASS = "your-password"
+```
+
+### Location and time
+
+```python
+LATITUDE  = 60.48        # decimal degrees
+LONGITUDE = 24.11
+
+UTC_OFFSET = 2           # base UTC offset in whole hours (without DST)
+USE_DST    = True        # True = European DST rules (last Sun Mar/Oct)
+```
+
+### Display format
+
+```python
+CLOCK_12H  = False       # True = 12h with am/pm, False = 24h
+DATE_ORDER = "DMY"       # DMY / MDY / YMD
+DATE_SEP   = "."         # separator character
+TEMP_UNIT  = "C"         # "C" or "F"
+WIND_UNIT  = "ms"        # "ms", "kmh", "mph", "kn"
+```
+
+### Screen saver
+
+```python
+SCREENSAVER_SPEED = 2    # 0=fastest drift, 999=disabled
+```
+
+### Weather
+
+```python
+WEATHER_INTERVAL       = 30 * 60   # refresh interval (seconds)
+FORECAST_NEXT_DAY_HOUR = 18        # hour after which forecast shows tomorrow first
+```
+
+### News
+
+```python
+NEWS_API_KEY    = "your-guardian-api-key"
+NEWS_SECTIONS   = "world,technology,science"   # Guardian sections, comma-separated
+NEWS_COUNT      = 4      # articles to fetch per section
+NEWS_INTERVAL   = 2 * 60 * 60   # cache refresh interval (seconds)
+
+NEWS_HOLD       = 15     # seconds to hold full article initial screen before scroll
+NEWS_HOLD_SUM   = 8      # seconds to hold summary (never scrolls)
+NEWS_HOLD_AFTER = 3      # seconds to hold after scroll completes
+
+NEWS_BODY_LINES = 105    # max wrapped lines stored per article (0 = unlimited)
+                         # ~19 lines fill one screen; 105 ≈ 5 screens
+                         # truncated articles show "[article truncated]" at the end
+
+NEWS_SCROLL_SPEED = 150  # extra ms delay per pixel (larger = slower scroll)
+                         # 125 ≈ one row per second
+```
+
+Available Guardian sections include: `world`, `technology`, `science`,
+`business`, `environment`, `politics`, `culture`, `sport`, and many more.
+See the [Guardian API explorer](https://open-platform.theguardian.com/explore/)
+for the full list.
 
 ---
 
