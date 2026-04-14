@@ -3,3 +3,4 @@ build-*/
 CLAUDE.md
 .claude/
 pico-crt-clock/newscache/
+pico-crt-clock/config_local.py

@@ -1,5 +1,8 @@
 import array
-from config import *
+try:
+    from config_local import *
+except ImportError:
+    from config import *
 from common import *
 
 # Integer phase counters (16-bit, 0..65535 = one full cycle).

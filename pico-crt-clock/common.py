@@ -3,7 +3,10 @@ import time
 import network
 import ntptime
 import machine
-from config import *
+try:
+    from config_local import *
+except ImportError:
+    from config import *
 
 
 __all__ = [

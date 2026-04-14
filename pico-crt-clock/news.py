@@ -1,7 +1,10 @@
 import urequests
 import gc
 import os
-from config import *
+try:
+    from config_local import *
+except ImportError:
+    from config import *
 from common import *
 
 # ── Layout ────────────────────────────────────────────────────────────────────

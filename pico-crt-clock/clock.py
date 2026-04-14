@@ -1,7 +1,10 @@
 import urequests
 import json
 import gc
-from config import *
+try:
+    from config_local import *
+except ImportError:
+    from config import *
 from common import *
 
 with open('icons.bin', 'rb') as _f:
