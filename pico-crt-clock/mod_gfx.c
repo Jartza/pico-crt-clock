@@ -1,6 +1,6 @@
 // mod_gfx.c
 // MicroPython C extension module "gfx".
-// Runs on core0 — only pushes commands to the queue, never touches
+// Runs on core0 - only pushes commands to the queue, never touches
 // the framebuffer or cvideo internals directly.
 //
 // Python API:
@@ -40,7 +40,7 @@
 #endif
 #endif
 
-// ── gfx.usb_ready() ──────────────────────────────────────────────────────────
+// gfx.usb_ready()
 // Returns True if a USB host has enumerated this device.
 // On RP2040, a host assigns a non-zero device address during enumeration
 // (SET_ADDRESS request, happens within ~200ms of plugging into a PC).
@@ -50,17 +50,17 @@ static mp_obj_t gfx_usb_ready(void) {
 }
 static MP_DEFINE_CONST_FUN_OBJ_0(gfx_usb_ready_obj, gfx_usb_ready);
 
-// ── gfx.usb_disable() ────────────────────────────────────────────────────────
+// gfx.usb_disable()
 // Removes the D+ pull-up resistor, signalling disconnect to the host.
 // Identical to what TinyUSB's dcd_disconnect() does internally.
-// After this, no USB traffic occurs until reset — safe to start video engine.
+// After this, no USB traffic occurs until reset - safe to start video engine.
 static mp_obj_t gfx_usb_disable(void) {
     usb_hw->sie_ctrl &= ~USB_SIE_CTRL_PULLUP_EN_BITS;
     return mp_const_none;
 }
 static MP_DEFINE_CONST_FUN_OBJ_0(gfx_usb_disable_obj, gfx_usb_disable);
 
-// ── gfx.init() ───────────────────────────────────────────────────────────────
+// gfx.init()
 // Launch the core1 video engine.  Call once before any other gfx function.
 // Safe to call multiple times (subsequent calls are no-ops).
 static bool gfx_core1_started = false;
@@ -74,9 +74,9 @@ static mp_obj_t gfx_init(void) {
 }
 static MP_DEFINE_CONST_FUN_OBJ_0(gfx_init_obj, gfx_init);
 
-// ── helpers ──────────────────────────────────────────────────────────────────
+// Helpers
 
-// Push and block until the queue accepts (no-yield busy spin — fine for a
+// Push and block until the queue accepts (no-yield busy spin - fine for a
 // Pico at 125MHz pushing a handful of draw calls; total wait is microseconds).
 static void push(gfx_cmd_t *cmd) {
     gfx_queue_push_blocking(cmd);
@@ -85,7 +85,7 @@ static void push(gfx_cmd_t *cmd) {
 static inline int16_t to_i16(mp_obj_t o) { return (int16_t)mp_obj_get_int(o); }
 static inline uint8_t to_u8(mp_obj_t o)  { return (uint8_t)mp_obj_get_int(o); }
 
-// ── gfx.deinit() ─────────────────────────────────────────────────────────────
+// gfx.deinit()
 // Stop the core1 video engine: disables PIO state machines, aborts DMA channels,
 // kills IRQs and drives DAC GPIO pins to 0.  Core1 parks in __wfe() afterwards.
 // Call this from the webREPL console before transferring files; the PIO/DMA
@@ -101,7 +101,7 @@ static mp_obj_t gfx_deinit(void) {
 }
 static MP_DEFINE_CONST_FUN_OBJ_0(gfx_deinit_obj, gfx_deinit);
 
-// ── gfx.cls(colour) ──────────────────────────────────────────────────────────
+// gfx.cls(colour)
 static mp_obj_t gfx_cls(mp_obj_t c_in) {
     gfx_cmd_t cmd = { .type = CMD_CLS, .c = to_u8(c_in) };
     push(&cmd);
@@ -109,7 +109,7 @@ static mp_obj_t gfx_cls(mp_obj_t c_in) {
 }
 static MP_DEFINE_CONST_FUN_OBJ_1(gfx_cls_obj, gfx_cls);
 
-// ── gfx.wait_vblank() ────────────────────────────────────────────────────────
+// gfx.wait_vblank()
 static mp_obj_t gfx_wait_vblank(void) {
     gfx_cmd_t cmd = { .type = CMD_WAIT_VBLANK };
     push(&cmd);
@@ -117,7 +117,7 @@ static mp_obj_t gfx_wait_vblank(void) {
 }
 static MP_DEFINE_CONST_FUN_OBJ_0(gfx_wait_vblank_obj, gfx_wait_vblank);
 
-// ── gfx.set_border(colour) ───────────────────────────────────────────────────
+// gfx.set_border(colour)
 static mp_obj_t gfx_set_border(mp_obj_t c_in) {
     gfx_cmd_t cmd = { .type = CMD_SET_BORDER, .c = to_u8(c_in) };
     push(&cmd);
@@ -125,7 +125,7 @@ static mp_obj_t gfx_set_border(mp_obj_t c_in) {
 }
 static MP_DEFINE_CONST_FUN_OBJ_1(gfx_set_border_obj, gfx_set_border);
 
-// ── gfx.plot(x, y, colour) ───────────────────────────────────────────────────
+// gfx.plot(x, y, colour)
 static mp_obj_t gfx_plot(mp_obj_t x, mp_obj_t y, mp_obj_t c) {
     gfx_cmd_t cmd = { .type = CMD_PLOT,
         .x0 = to_i16(x), .y0 = to_i16(y), .c = to_u8(c) };
@@ -134,7 +134,7 @@ static mp_obj_t gfx_plot(mp_obj_t x, mp_obj_t y, mp_obj_t c) {
 }
 static MP_DEFINE_CONST_FUN_OBJ_3(gfx_plot_obj, gfx_plot);
 
-// ── gfx.line(x0, y0, x1, y1, colour) ────────────────────────────────────────
+// gfx.line(x0, y0, x1, y1, colour)
 static mp_obj_t gfx_line(size_t n, const mp_obj_t *a) {
     gfx_cmd_t cmd = { .type = CMD_LINE,
         .x0 = to_i16(a[0]), .y0 = to_i16(a[1]),
@@ -145,7 +145,7 @@ static mp_obj_t gfx_line(size_t n, const mp_obj_t *a) {
 }
 static MP_DEFINE_CONST_FUN_OBJ_VAR_BETWEEN(gfx_line_obj, 5, 5, gfx_line);
 
-// ── gfx.hline(y, x0, x1, colour) ────────────────────────────────────────────
+// gfx.hline(y, x0, x1, colour)
 static mp_obj_t gfx_hline(size_t n, const mp_obj_t *a) {
     gfx_cmd_t cmd = { .type = CMD_HLINE,
         .y0 = to_i16(a[0]), .x0 = to_i16(a[1]),
@@ -155,7 +155,7 @@ static mp_obj_t gfx_hline(size_t n, const mp_obj_t *a) {
 }
 static MP_DEFINE_CONST_FUN_OBJ_VAR_BETWEEN(gfx_hline_obj, 4, 4, gfx_hline);
 
-// ── gfx.circle(x, y, r, colour, filled) ─────────────────────────────────────
+// gfx.circle(x, y, r, colour, filled)
 static mp_obj_t gfx_circle(size_t n, const mp_obj_t *a) {
     gfx_cmd_t cmd = { .type = CMD_CIRCLE,
         .x0 = to_i16(a[0]), .y0 = to_i16(a[1]),
@@ -167,7 +167,7 @@ static mp_obj_t gfx_circle(size_t n, const mp_obj_t *a) {
 }
 static MP_DEFINE_CONST_FUN_OBJ_VAR_BETWEEN(gfx_circle_obj, 5, 5, gfx_circle);
 
-// ── gfx.triangle(x0,y0, x1,y1, x2,y2, colour, filled) ───────────────────────
+// gfx.triangle(x0,y0, x1,y1, x2,y2, colour, filled)
 static mp_obj_t gfx_triangle(size_t n, const mp_obj_t *a) {
     gfx_cmd_t cmd = { .type = CMD_TRIANGLE,
         .x0 = to_i16(a[0]), .y0 = to_i16(a[1]),
@@ -180,7 +180,7 @@ static mp_obj_t gfx_triangle(size_t n, const mp_obj_t *a) {
 }
 static MP_DEFINE_CONST_FUN_OBJ_VAR_BETWEEN(gfx_triangle_obj, 8, 8, gfx_triangle);
 
-// ── gfx.polygon(x0,y0, x1,y1, x2,y2, x3,y3, colour, filled) ────────────────
+// gfx.polygon(x0,y0, x1,y1, x2,y2, x3,y3, colour, filled)
 static mp_obj_t gfx_polygon(size_t n, const mp_obj_t *a) {
     gfx_cmd_t cmd = { .type = CMD_POLYGON,
         .x0 = to_i16(a[0]), .y0 = to_i16(a[1]),
@@ -194,7 +194,7 @@ static mp_obj_t gfx_polygon(size_t n, const mp_obj_t *a) {
 }
 static MP_DEFINE_CONST_FUN_OBJ_VAR_BETWEEN(gfx_polygon_obj, 10, 10, gfx_polygon);
 
-// ── gfx.print_char(x, y, char_int, bg, fg) ───────────────────────────────────
+// gfx.print_char(x, y, char_int, bg, fg)
 static mp_obj_t gfx_print_char(size_t n, const mp_obj_t *a) {
     gfx_cmd_t cmd = { .type = CMD_PRINT_CHAR,
         .x0 = to_i16(a[0]), .y0 = to_i16(a[1]),
@@ -205,7 +205,7 @@ static mp_obj_t gfx_print_char(size_t n, const mp_obj_t *a) {
 }
 static MP_DEFINE_CONST_FUN_OBJ_VAR_BETWEEN(gfx_print_char_obj, 5, 5, gfx_print_char);
 
-// ── gfx.print_string(x, y, string, bg, fg) ───────────────────────────────────
+// gfx.print_string(x, y, string, bg, fg)
 static mp_obj_t gfx_print_string(size_t n, const mp_obj_t *a) {
     gfx_cmd_t cmd = { .type = CMD_PRINT_STRING,
         .x0 = to_i16(a[0]), .y0 = to_i16(a[1]),
@@ -220,8 +220,8 @@ static mp_obj_t gfx_print_string(size_t n, const mp_obj_t *a) {
 }
 static MP_DEFINE_CONST_FUN_OBJ_VAR_BETWEEN(gfx_print_string_obj, 5, 5, gfx_print_string);
 
-// ── gfx.print_string_2x(x, y, string, bg, fg) ────────────────────────────────
-// Same signature as print_string; each glyph is rendered at 16×16 px (2× scale).
+// gfx.print_string_2x(x, y, string, bg, fg)
+// Same signature as print_string; each glyph is rendered at 16x16 px (2x scale).
 static mp_obj_t gfx_print_string_2x(size_t n, const mp_obj_t *a) {
     gfx_cmd_t cmd = { .type = CMD_PRINT_STRING_2X,
         .x0 = to_i16(a[0]), .y0 = to_i16(a[1]),
@@ -236,7 +236,7 @@ static mp_obj_t gfx_print_string_2x(size_t n, const mp_obj_t *a) {
 }
 static MP_DEFINE_CONST_FUN_OBJ_VAR_BETWEEN(gfx_print_string_2x_obj, 5, 5, gfx_print_string_2x);
 
-// ── gfx.scroll_up(colour, rows) ──────────────────────────────────────────────
+// gfx.scroll_up(colour, rows)
 static mp_obj_t gfx_scroll_up(mp_obj_t c_in, mp_obj_t rows_in) {
     gfx_cmd_t cmd = { .type = CMD_SCROLL_UP,
         .c = to_u8(c_in), .scroll_rows = to_i16(rows_in) };
@@ -245,9 +245,9 @@ static mp_obj_t gfx_scroll_up(mp_obj_t c_in, mp_obj_t rows_in) {
 }
 static MP_DEFINE_CONST_FUN_OBJ_2(gfx_scroll_up_obj, gfx_scroll_up);
 
-// ── gfx.blit(buf, sw, sh, dx, dy) ────────────────────────────────────────────
+// gfx.blit(buf, sw, sh, dx, dy)
 // buf must be a bytes/bytearray of exactly sw*sh bytes.
-// Copies into gfx_blit_buf on core0 before pushing — the GC can do what
+// Copies into gfx_blit_buf on core0 before pushing - the GC can do what
 // it likes with the Python object afterwards.
 static mp_obj_t gfx_blit(size_t n, const mp_obj_t *a) {
     mp_buffer_info_t bi;
@@ -268,7 +268,7 @@ static mp_obj_t gfx_blit(size_t n, const mp_obj_t *a) {
 
     // Wait until core1 has finished reading gfx_blit_buf from the previous blit.
     // Typical wait is a few microseconds (time for core1 to run blit()); the
-    // __wfe() avoids burning cycles — core1 does __sev() after clearing the flag.
+    // __wfe() avoids burning cycles - core1 does __sev() after clearing the flag.
     while (gfx_blit_busy) { __wfe(); }
 
     // Copy sprite pixels into the shared buffer, mapping palette indices to DAC
@@ -294,7 +294,7 @@ static mp_obj_t gfx_blit(size_t n, const mp_obj_t *a) {
 }
 static MP_DEFINE_CONST_FUN_OBJ_VAR_BETWEEN(gfx_blit_obj, 5, 5, gfx_blit);
 
-// ── module table ─────────────────────────────────────────────────────────────
+// Module table
 static const mp_rom_map_elem_t gfx_module_globals_table[] = {
     { MP_ROM_QSTR(MP_QSTR___name__),     MP_ROM_QSTR(MP_QSTR_gfx) },
     { MP_ROM_QSTR(MP_QSTR_usb_ready),    MP_ROM_PTR(&gfx_usb_ready_obj) },
