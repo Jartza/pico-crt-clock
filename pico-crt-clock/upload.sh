@@ -12,6 +12,7 @@ FILES=(
     common.py
     clock.py
     torus.py
+    news.py
     icons.bin
     torus.bin
 )
