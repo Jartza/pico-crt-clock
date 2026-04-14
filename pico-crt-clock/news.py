@@ -330,7 +330,8 @@ def _fetch_and_store():
                 gc.collect()
                 r = urequests.get(
                     "https://content.guardianapis.com/search"
-                    "?section={}&type=article&show-fields=headline,trailText,body"
+                    "?section={}&type=article&tag=tone/news&order-by=newest"
+                    "&show-fields=headline,trailText,body"
                     "&page-size=1&page={}&api-key={}".format(
                         section, page, NEWS_API_KEY),
                     timeout=30)
