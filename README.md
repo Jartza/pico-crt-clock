@@ -333,6 +333,13 @@ python run_sim.py --c64font   # Commodore 64 font
 always-connected mocks; weather and news are fetched live.
 Set `SCALE` in `gfx.py` to resize the window (default 3x).
 
+For simulator use, it is good practice to make a full local copy of
+`config.py` as `config_local.py` and put your real WiFi credentials and API
+keys there. The simulator and firmware prefer `config_local.py` when present,
+and that file is ignored by Git. This keeps secrets out of commits, which is
+especially useful if you want to send changes or pull requests to this public
+repository.
+
 The `--c64font` flag selects the Commodore 64 lowercase+uppercase character set
 in the simulator, matching what `./build.sh <variant> --c64font` builds into
 the firmware. The window title shows which font is active.
