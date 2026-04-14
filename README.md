@@ -281,7 +281,18 @@ cp build-RPI_PICO_W-amp/firmware.uf2 /media/$USER/RPI-RP2/
 
 ### Deploy Python files
 
-After the Pico reboots, connect to PC:
+After the Pico reboots, connect to PC. The easiest way is the included script:
+
+```bash
+cd pico-crt-clock
+./upload.sh
+```
+
+`upload.sh` copies all Python and binary files to the Pico using `mpremote`
+and prompts before overwriting `config.py` (in case you have already configured
+it on the device). Requires `mpremote`: `pip install mpremote`.
+
+Alternatively, copy files manually:
 
 ```bash
 mpremote fs cp pico-crt-clock/main.py    :main.py
@@ -345,9 +356,9 @@ physical sliding switch. `d` toggles independently of the mode pins.
 
 ### Mode 0 — Clock / weather (default)
 
-Displays the current time, date, indoor/outdoor temperature, wind speed, and a
-3-day weather forecast with icons. Weather data is fetched from
-[Open-Meteo](https://open-meteo.com) — no API key required.
+Displays the current time, date, temperature, wind speed, and a 3-day weather
+forecast with icons. All weather data is fetched from
+[Open-Meteo](https://open-meteo.com) — no API key or sensors required.
 
 This mode runs automatically when no GPIO is pulled low (no switch connected).
 
