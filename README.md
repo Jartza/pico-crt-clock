@@ -475,10 +475,9 @@ for the full list.
 
 ## Using gfx for your own project
 
-The firmware is not specific to the clock application. To run your own
+The firmware is not specific to the bundled applications. To run your own
 MicroPython script with composite video output, replace `main.py` on the Pico
-with a file that calls `gfx.init()` and uses the `gfx` API. `clock.py` can be
-left on the filesystem or removed — it is only imported by `main.py`.
+with a file that calls `gfx.init()` and uses the `gfx` API.
 
 ```python
 import gfx
@@ -492,8 +491,7 @@ while True:
 ```
 
 The PC simulator (`gfx.py` + `run_sim.py`) works the same way — modify
-`run_sim.py` to import your script instead of `clock`, and it runs on the
-desktop without hardware.
+`run_sim.py` to run your script, and it runs on the desktop without hardware.
 
 ---
 
