@@ -7,13 +7,13 @@ from common import *
 
 # Integer phase counters (16-bit, 0..65535 = one full cycle).
 # Steps derived from original float increments scaled to 16-bit integer space.
-# AY: 0.03 rad/frame → round(0.03/2π × 65536) = 313
-# WB: 0.03×0.31 rad/frame → round(0.03×0.31/2π × 65536) = 97
-# TXT: 0.03×0.13 rad/frame → round(0.03×0.13/2π × 65536) = 41
+# AY: 0.03 rad/frame -> round(0.03 / 2pi x 65536) = 313
+# WB: 0.03 x 0.31 rad/frame -> round(0.03 x 0.31 / 2pi x 65536) = 97
+# TXT: 0.03 x 0.13 rad/frame -> round(0.03 x 0.13 / 2pi x 65536) = 41
 _AY_STEP  = 313
 _WB_STEP  = 129
 _TXT_STEP = 55
-_LIGHT_R  = 200   # light X sweep amplitude, fixed-point ×256
+_LIGHT_R  = 200   # light X sweep amplitude, fixed-point x256
 _ay_phase  = 0
 _wb_phase  = 0
 _txt_phase = 0
@@ -22,14 +22,14 @@ _txt_phase = 0
 # _TORUS_N, _TORUS_M, _zoff, _zmax are set by _load_torus() at boot.
 _TORUS_N = 0;  _TORUS_M = 0;  _zoff = 0;  _zmax = 0
 
-# Torus data — all None until _load_torus() is called
-_base_x = None;  _base_y = None;  _base_z = None  # unrotated vertices, int ×256
+# Torus data - all None until _load_torus() is called
+_base_x = None;  _base_y = None;  _base_z = None  # unrotated vertices, int x256
 _tp_x   = None;  _tp_y   = None;  _tp_z = None    # projected screen coords + camera Z (output)
 _persp_lut  = None  # reciprocal LUT for perspective divide
-_sin_lut    = None  # 256-entry sin table, int ×256
-_icx_lut    = None  # 256-entry cos(sin(phase)×WB_AMP)×256 — wobble X rotation
-_isx_lut    = None  # 256-entry sin(sin(phase)×WB_AMP)×256
-_base_nx    = None;  _base_ny = None;  _base_nz = None  # face normals, int ×256
+_sin_lut    = None  # 256-entry sin table, int x256
+_icx_lut    = None  # 256-entry cos(sin(phase) x WB_AMP) x 256 - wobble X rotation
+_isx_lut    = None  # 256-entry sin(sin(phase) x WB_AMP) x 256
+_base_nx    = None;  _base_ny = None;  _base_nz = None  # face normals, int x256
 _torus_faces = None  # flat (a,b,c,d) quad index quads
 _face_shades = None  # per-face shade output (0 = back-face culled)
 
@@ -116,7 +116,7 @@ def draw_demo(time_str, date_str):
     N, M = _TORUS_N, _TORUS_M
     NM = N * M
 
-    # Advance integer phases — no floats, no trig calls
+    # Advance integer phases - no floats, no trig calls
     _ay_phase  = (_ay_phase  + _AY_STEP)  & 0xFFFF
     _wb_phase  = (_wb_phase  + _WB_STEP)  & 0xFFFF
     _txt_phase = (_txt_phase + _TXT_STEP) & 0xFFFF
@@ -124,7 +124,7 @@ def draw_demo(time_str, date_str):
     wb_idx  = _wb_phase  >> 8
     txt_idx = _txt_phase >> 8
 
-    # Rotation matrix from LUTs — 4 array lookups, zero trig calls
+    # Rotation matrix from LUTs - 4 array lookups, zero trig calls
     isy = _sin_lut[ay_idx]
     icy = _sin_lut[(ay_idx + 64) & 255]   # cos = sin(phase + quarter turn)
     icx = _icx_lut[wb_idx]
@@ -155,7 +155,7 @@ def draw_demo(time_str, date_str):
         gfx.polygon(tpx[a], tpy[a], tpx[b], tpy[b],
                     tpx[c], tpy[c], tpx[d], tpy[d], shades[k], True)
 
-    # Time + date overlay drifts horizontally together — integer LUT, no trig
+    # Time + date overlay drifts horizontally together - integer LUT, no trig
     # Amplitude 72 keeps a 10-char date string within screen bounds
     text_x = (_sin_lut[txt_idx] * 72 >> 8) + 96
     gfx.print_string(text_x, 176, time_str, BLACK, WHITE)

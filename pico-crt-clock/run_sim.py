@@ -12,7 +12,7 @@ GPIO simulation (switches between modes):
   b       pull GPIO for mode 1 (torus) low
   c       pull GPIO for mode 2 (news) low
   d       pull GPIO 13 low (news detail switch: show full article instead of summary)
-  ESC     release all pins → default mode (clock/weather with no switch)
+  ESC     release all pins -> default mode (clock/weather with no switch)
 
   Pressing a key latches that mode until ESC is pressed, mirroring a physical
   sliding switch.  soft_reset() triggers an automatic reboot into the new mode.
@@ -34,7 +34,7 @@ Requires: pip install pygame
 import sys
 import os
 
-# -- handle --c64font before any other imports so gfx.py sees the env var ------
+# Handle --c64font before any other imports so gfx.py sees the env var.
 if '--c64font' in sys.argv:
     os.environ['GFX_FONT'] = 'c64'
     sys.argv.remove('--c64font')
@@ -43,17 +43,17 @@ import types
 import json
 import time as _time
 
-# -- ensure pico-crt-clock/ is on the path ------------------------------------
+# Ensure pico-crt-clock/ is on the path.
 _here = os.path.dirname(os.path.abspath(__file__))
 if _here not in sys.path:
     sys.path.insert(0, _here)
 
 os.chdir(_here)
 
-# -- import gfx early so _sim_pins is available for the machine mock -----------
+# Import gfx early so _sim_pins is available for the machine mock.
 import gfx as _gfx
 
-# -- patch the standard 'time' module with MicroPython-compatible helpers ------
+# Patch the standard 'time' module with MicroPython-compatible helpers.
 _time.localtime = _time.gmtime
 
 def _ticks_ms():
@@ -77,7 +77,7 @@ _time.ticks_diff = _ticks_diff
 _time.ticks_add  = _ticks_add
 _time.sleep_ms   = _sleep_ms
 
-# -- mock 'machine' module with GPIO pin simulation ----------------------------
+# Mock 'machine' module with GPIO pin simulation.
 class _SoftReset(BaseException):
     pass
 
@@ -120,7 +120,7 @@ machine.reset_cause   = _reset_cause
 machine.soft_reset    = _soft_reset
 sys.modules['machine'] = machine
 
-# -- mock 'network' module -----------------------------------------------------
+# Mock 'network' module.
 class _WLAN:
     def active(self, v=None):    pass
     def connect(self, ssid, pw): pass
@@ -135,12 +135,12 @@ network.STA_IF = 0
 network.WLAN   = lambda _mode: _WLAN()
 sys.modules['network'] = network
 
-# -- mock 'ntptime' module -----------------------------------------------------
+# Mock 'ntptime' module.
 ntptime         = types.ModuleType('ntptime')
 ntptime.settime = lambda: None
 sys.modules['ntptime'] = ntptime
 
-# -- mock 'urequests' module ---------------------------------------------------
+# Mock 'urequests' module.
 import urllib.request
 import io
 
@@ -163,15 +163,15 @@ urequests         = types.ModuleType('urequests')
 urequests.get     = _get
 sys.modules['urequests'] = urequests
 
-# -- modules to clear on each soft_reset so they re-import fresh ---------------
+# Modules to clear on each soft_reset so they re-import fresh.
 _APP_MODULES = {'main', 'clock', 'torus', 'news', 'common'}
 
-# -- compile main.py once; re-exec on every soft_reset -------------------------
+# Compile main.py once; re-exec on every soft_reset.
 with open(os.path.join(_here, 'main.py')) as f:
     _main_code = compile(f.read(), 'main.py', 'exec')
 
 while True:
-    # Clear app modules and sim pins — fresh boot
+    # Clear app modules and sim pins - fresh boot
     for m in _APP_MODULES:
         sys.modules.pop(m, None)
     _gfx._sim_pins.clear()
@@ -179,4 +179,4 @@ while True:
     try:
         exec(_main_code, {'__name__': '__main__'})
     except _SoftReset:
-        pass   # soft_reset() called — loop back for next boot
+        pass   # soft_reset() called - loop back for next boot

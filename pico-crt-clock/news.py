@@ -7,12 +7,12 @@ except ImportError:
     from config import *
 from common import *
 
-# ── Layout ────────────────────────────────────────────────────────────────────
-# Clock:  y=0,  1× font → time + date on one line
-# Gap:    y=8–15 (empty)
-# Title:  y=16 and y=24, 1× font → 32 chars/line
+# Layout
+# Clock:  y=0,  1x font -> time + date on one line
+# Gap:    y=8-15 (empty)
+# Title:  y=16 and y=24, 1x font -> 32 chars/line
 # Sep:    1 px white line at y=33  (unchanged)
-# Body:   1× font, 32 chars/line, 19 lines visible  (unchanged)
+# Body:   1x font, 32 chars/line, 19 lines visible  (unchanged)
 CLOCK_Y     = 0
 TITLE_Y1    = 16
 TITLE_Y2    = 24
@@ -20,7 +20,7 @@ SEP_Y       = 33
 BODY_START  = 40
 LINE_H      = 8
 BODY_LINES  = (192 - BODY_START) // LINE_H   # 19
-CHARS_TITLE = 256 // 8    # 32  (1× font, same as body)
+CHARS_TITLE = 256 // 8    # 32  (1x font, same as body)
 CHARS_BODY  = 256 // 8    # 32
 
 HOLD_MS         = NEWS_HOLD       * 1000
@@ -33,10 +33,10 @@ _CHUNK   = 64   # bytes per read when scanning JSON
 
 wlan = None
 
-# ── Text ──────────────────────────────────────────────────────────────────────
+# Text
 # Map non-ASCII characters the font can't render to ASCII equivalents.
 _CHARMAP = {
-    '\u00a9': '(c)', '\u00ae': '(R)',           # © ®
+    '\u00a9': '(c)', '\u00ae': '(R)',           # copyright, registered trademark
     '\u2013': '-',   '\u2014': '-',              # en/em dash
     '\u2018': "'",   '\u2019': "'",              # curly single quotes
     '\u201c': '"',   '\u201d': '"',              # curly double quotes
@@ -185,7 +185,7 @@ def _json_body_wrap(src, key, dst, width, max_lines=0):
             done = False
             while i < len(data) and not done and not trunc:
                 c = data[i]
-                # ── JSON escape ───────────────────────────────────────────────
+                # JSON escape
                 if c == '\\':
                     if i + 1 < len(data):
                         nc = data[i + 1]
@@ -204,12 +204,12 @@ def _json_body_wrap(src, key, dst, width, max_lines=0):
                     if ch == '"':       # unescaped " = end of JSON string value
                         done = True
                         break
-                # ── HTML tag ──────────────────────────────────────────────────
+                # HTML tag
                 if in_tag:
                     if ch == '>':
                         low = tag.strip().lower()
                         if low.startswith('/p'):
-                            # </p>: flush word → line, write line + blank separator
+                            # </p>: flush word -> line, write line + blank separator
                             if word:
                                 while len(word) > width and not trunc:
                                     if line:
@@ -249,7 +249,7 @@ def _json_body_wrap(src, key, dst, width, max_lines=0):
                     elif len(tag) < 16:
                         tag += ch
                     continue
-                # ── HTML entity ───────────────────────────────────────────────
+                # HTML entity
                 if in_ent:
                     if ch == ';':
                         rep = _entity_char(entity); entity = ''; in_ent = False
@@ -259,7 +259,7 @@ def _json_body_wrap(src, key, dst, width, max_lines=0):
                     else:
                         entity += ch
                     continue
-                # ── Normal character ──────────────────────────────────────────
+                # Normal character
                 if ch == '<':   in_tag = True; tag = ''
                 elif ch == '&': in_ent = True; entity = ''
                 elif ord(ch) >= 128: word += _CHARMAP.get(ch, '')
@@ -298,7 +298,7 @@ def _json_body_wrap(src, key, dst, width, max_lines=0):
         if line:
             dst.write(line + '\n')
 
-# ── Fetch & store ─────────────────────────────────────────────────────────────
+# Fetch and store
 def _fetch_and_store():
     """Fetch articles one at a time, streaming each response to flash then scanning
     it with _CHUNK-byte reads. No large contiguous heap allocation needed.
@@ -396,7 +396,7 @@ def _list_files():
     except OSError:
         return []
 
-# ── Drawing ───────────────────────────────────────────────────────────────────
+# Drawing
 def _header_time(section=''):
     """Return a formatted local-time + date + section string for the header clock line."""
     ts = time.time()
@@ -446,7 +446,7 @@ def _poll_pin(pin, ms, detail_pin=None, d_state=None):
         time.sleep_ms(50)
     return None
 
-# ── Article display ───────────────────────────────────────────────────────────
+# Article display
 def _show_article(filename, pin, detail_pin=None, hold_ms=None):
     """Display one article with smooth scroll if content exceeds screen height.
     Returns None on normal completion, 'MODE' if mode pin released,
@@ -489,7 +489,7 @@ def _show_article(filename, pin, detail_pin=None, hold_ms=None):
         if result == 'MODE':
             return 'MODE'
         if nxtline is None:
-            # fits on one screen — initial hold was enough, move on
+            # fits on one screen - initial hold was enough, move on
             return None
 
         # Smooth scroll: 1 px/frame, new body line every LINE_H pixels.
@@ -521,7 +521,7 @@ def _show_article(filename, pin, detail_pin=None, hold_ms=None):
         return 'MODE'
     return None
 
-# ── Entry point ───────────────────────────────────────────────────────────────
+# Entry point
 def run(pin=None):
     global wlan
     from machine import Pin as _Pin
@@ -530,7 +530,7 @@ def run(pin=None):
     gfx.set_border(0)
     gfx.cls(BLACK)
 
-    # GPIO 13: detail switch — low = show full article, high (default) = summary
+    # GPIO 13: detail switch - low = show full article, high (default) = summary
     detail_pin = _Pin(13, _Pin.IN, _Pin.PULL_UP)
 
     wlan = connect_wifi()

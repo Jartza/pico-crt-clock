@@ -22,7 +22,7 @@ def make_torus_bin(filename="torus.bin"):
     zoff = R + r            # z index offset for persp LUT
     zmax = 2 * (R + r)      # max z index (LUT size - 1)
 
-    # Base vertices, fixed-point ×256 (int32)
+    # Base vertices, fixed-point x256 (int32)
     bx = [0] * NM;  by = [0] * NM;  bz = [0] * NM
     k = 0
     for j in range(M):
@@ -36,17 +36,17 @@ def make_torus_bin(filename="torus.bin"):
             bz[k] = int(r * sin(theta) * 256)
             k += 1
 
-    # Perspective LUT: int(PERSP_DIST×256 / (PERSP_DIST-zoff+i)) for i in 0..zmax (uint16)
+    # Perspective LUT: int(PERSP_DIST x 256 / (PERSP_DIST-zoff+i)) for i in 0..zmax (uint16)
     persp_lut = [int(_PERSP_DIST * 256 / (_PERSP_DIST - zoff + i)) for i in range(zmax + 1)]
 
-    # Sine table: int(sin(i×2π/256)×256) for i in 0..255 (int16)
+    # Sine table: int(sin(i x 2pi / 256) x 256) for i in 0..255 (int16)
     sin_lut = [int(sin(i * 6.2832 / 256) * 256) for i in range(256)]
 
-    # Wobble LUTs: cos/sin of sin(phase)×WB_AMP (int16)
+    # Wobble LUTs: cos/sin of sin(phase) x WB_AMP (int16)
     icx_lut = [int(cos(sin(i * 6.2832 / 256) * _WB_AMP) * 256) for i in range(256)]
     isx_lut = [int(sin(sin(i * 6.2832 / 256) * _WB_AMP) * 256) for i in range(256)]
 
-    # Face normals: outward unit normal at each face centre, fixed-point ×256 (int16)
+    # Face normals: outward unit normal at each face centre, fixed-point x256 (int16)
     # Normal at face (j,i) centre: (cos(theta)*cos(phi), cos(theta)*sin(phi), sin(theta))
     fnx = [0] * NM;  fny = [0] * NM;  fnz = [0] * NM
     k = 0
@@ -71,7 +71,7 @@ def make_torus_bin(filename="torus.bin"):
 
     persp_size = zmax + 1
     with open(filename, "wb") as f:
-        # Header: N, M, R, r (uint8), WB_AMP ×1000 (uint16), PERSP_DIST (uint16)
+        # Header: N, M, R, r (uint8), WB_AMP x1000 (uint16), PERSP_DIST (uint16)
         f.write(struct.pack("4B2H", N, M, R, r, round(_WB_AMP * 1000), _PERSP_DIST))
         f.write(struct.pack(f"{NM}i",         *bx))
         f.write(struct.pack(f"{NM}i",         *by))

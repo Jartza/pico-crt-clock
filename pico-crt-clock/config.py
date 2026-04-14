@@ -1,11 +1,11 @@
 WIFI_SSID = "wifiname"
 WIFI_PASS = "password"
 
-# The Guardian open platform API key — get a free key at https://open-platform.theguardian.com
+# The Guardian open platform API key - get a free key at https://open-platform.theguardian.com
 NEWS_API_KEY = "YOUR_GUARDIAN_API_KEY_HERE"
 
 # Guardian sections to fetch from, with optional per-section article count.
-# Format: "section:count,section:count,..." — count falls back to NEWS_COUNT if omitted.
+# Format: "section:count,section:count,..." - count falls back to NEWS_COUNT if omitted.
 # Examples: technology, science, world, business, environment, politics, sport, culture
 NEWS_SECTIONS = "world:6,technology:4,politics:6"
 
@@ -18,7 +18,7 @@ NEWS_INTERVAL = 2 * 60 * 60
 # Seconds to hold the initial screen (also the only hold if article fits on one screen)
 NEWS_HOLD = 15
 
-# Seconds to hold summary (trailText) articles — these are short and never scroll
+# Seconds to hold summary (trailText) articles - these are short and never scroll
 NEWS_HOLD_SUM = 8
 
 # Seconds to hold after scrolling finishes (only applies when scrolling occurred)

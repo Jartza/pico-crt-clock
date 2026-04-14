@@ -83,7 +83,7 @@ def connect_wifi():
     while time.ticks_diff(deadline, time.ticks_ms()) > 0:
         if wlan.isconnected():
             if machine.reset_cause() == machine.PWRON_RESET:
-                # First power-up boot — show connection info for user to note IP
+                # First power-up boot - show connection info for user to note IP
                 gfx.cls(BLACK)
                 gfx.print_string(8,  90, "Wifi connected:", BLACK, WHITE)
                 gfx.print_string(8, 100, "SSID: {}".format(wlan.config('essid')), BLACK, WHITE)

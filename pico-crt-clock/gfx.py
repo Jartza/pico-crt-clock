@@ -24,7 +24,7 @@ class _MicropythonStub:
 builtins.micropython = _MicropythonStub()
 
 class _Ptr:
-    """Identity wrapper — makes ptr32(arr)[i] work as plain array access on PC."""
+    """Identity wrapper - makes ptr32(arr)[i] work as plain array access on PC."""
     __slots__ = ('_a',)
     def __init__(self, a):       self._a = a
     def __getitem__(self, i):    return self._a[i]
@@ -34,16 +34,16 @@ builtins.ptr32 = _Ptr
 builtins.ptr16 = _Ptr
 builtins.ptr8  = _Ptr
 
-# -- display geometry ----------------------------------------------------------
+# Display geometry
 WIDTH  = 256
 HEIGHT = 192
 BORDER = 20
 SCALE  = 3   # integer scale for visibility on modern displays
 
-# -- 16-level grayscale palette ------------------------------------------------
+# 16-level grayscale palette
 PALETTE = tuple((round(i * 255 / 15),) * 3 for i in range(16))
 
-# -- ZX Spectrum 48K charset ---------------------------------------------------
+# ZX Spectrum 48K charset
 # 96 glyphs, ASCII 32-127, 8 bytes per glyph, MSB = leftmost pixel.
 # Byte data taken verbatim from pico-mposite/charset.c.
 _CHARSET_SPECTRUM = bytes([
@@ -145,7 +145,7 @@ _CHARSET_SPECTRUM = bytes([
     0x3c,0x42,0x99,0xa1,0xa1,0x99,0x42,0x3c,  # 127 DEL (Spectrum copyright symbol)
 ])
 
-# -- Commodore 64 charset (lowercase+uppercase ROM set, second 2K) -------------
+# Commodore 64 charset (lowercase+uppercase ROM set, second 2K)
 # 96 glyphs, ASCII 32-127, 8 bytes per glyph, MSB = leftmost pixel.
 # Uppercase A-Z: ROM positions 0x41-0x5A.  Lowercase a-z: ROM positions 0x01-0x1A.
 # Punctuation/digits (32-63) match the C64 ROM directly (positions 0x20-0x3F).
@@ -249,16 +249,16 @@ _CHARSET_C64 = bytes([
     0x33,0x99,0xcc,0x66,0x33,0x99,0xcc,0x66,  # 127 DEL (C64 diagonal)
 ])
 
-# -- active charset (selected at import time via GFX_FONT env var) --------------
+# Active charset (selected at import time via GFX_FONT env var)
 _FONT_NAME = os.environ.get('GFX_FONT', 'spectrum').lower()
 _CHARSET   = _CHARSET_C64 if _FONT_NAME == 'c64' else _CHARSET_SPECTRUM
 
-# -- internal state ------------------------------------------------------------
+# Internal state
 _screen        = None   # pygame window surface
 _surface       = None   # 256x192 logical surface
 _border_colour = 0
 
-# -- GPIO simulation -----------------------------------------------------------
+# GPIO simulation
 # SimPin objects are appended here in order as machine.Pin() is called.
 # Keys a/b/c switch modes exclusively (only one low at a time); ESC = all high.
 # Key d independently toggles the detail pin (index 3) without affecting mode pins.
@@ -329,7 +329,7 @@ def _ensure_init():
 _key_queue = []
 
 def get_key():
-    """Return next pending key code or None. Simulator only — not present on hardware."""
+    """Return next pending key code or None. Simulator only - not present on hardware."""
     return _key_queue.pop(0) if _key_queue else None
 
 def _pump():
@@ -381,7 +381,7 @@ def _draw_char(x, y, ch, bg, fg, scale=1):
                     pygame.draw.rect(_surface, colour,
                                      pygame.Rect(px, py, s, s))
 
-# -- public API (mirrors mod_gfx.c) -------------------------------------------
+# Public API (mirrors mod_gfx.c)
 
 def usb_ready():
     """Always False in simulation - skips USB detect loop in clock.py."""
