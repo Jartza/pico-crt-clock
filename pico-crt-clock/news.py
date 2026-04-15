@@ -305,6 +305,7 @@ def _fetch_and_store():
     Returns number of articles stored, 0 on failure."""
     reconnect_wifi(wlan)
     draw_banner("Fetching news (black screen)")
+    gc.collect()
     time.sleep_ms(4000)
     gfx.cls(BLACK)
     try:
@@ -381,10 +382,10 @@ def _fetch_and_store():
                 count += 1
                 del headline, tlines
                 gc.collect()
-
         return count
     except Exception as e:
-        print("news fetch error:", e)
+        # no traceback on Pico
+        print("news fetch error: {}: {}".format(type(e).__name__, e))
         return 0
 
 def _list_files():
@@ -425,15 +426,20 @@ def _draw_header(t1, t2, section=''):
     than the full row, leaving columns outside the string width uncleared otherwise).
     Separator: explicit erase at SEP_Y-1 (gfx.line has no background)."""
     clk = _header_time(section)
-    gfx.print_string((256 - len(clk) * 8) // 2, CLOCK_Y,  clk, BLACK, WHITE)
+
+    # Clear scrolling artifacts
     gfx.line(0, TITLE_Y1 - 1, 255, TITLE_Y1 - 1, BLACK)
+    gfx.line(0, TITLE_Y2 - 1, 255, TITLE_Y2 - 1, BLACK)
+    gfx.line(0, SEP_Y - 1, 255, SEP_Y - 1, BLACK)
+    gfx.line(0, SEP_Y + 6, 255, SEP_Y + 6, BLACK)
+    gfx.line(0, SEP_Y + 7, 255, SEP_Y + 7, BLACK)
+
+    # Draw date/time, header lines and separator
+    gfx.line(0, SEP_Y,     255, SEP_Y,     7)
+    gfx.print_string((256 - len(clk) * 8) // 2, CLOCK_Y,  clk, BLACK, WHITE)
     gfx.print_string((256 - len(t1)  * 8) // 2, TITLE_Y1, t1,  BLACK, WHITE)
     if t2:
-        gfx.line(0, TITLE_Y2 - 1, 255, TITLE_Y2 - 1, BLACK)
         gfx.print_string((256 - len(t2) * 8) // 2, TITLE_Y2, t2, BLACK, WHITE)
-    gfx.line(0, SEP_Y - 1, 255, SEP_Y - 1, BLACK)
-    gfx.line(0, SEP_Y,     255, SEP_Y,     7)
-    gfx.line(0, SEP_Y + 6, 255, SEP_Y + 6, BLACK)
 
 # Article display
 def _show_article(filename, pin, mode_counter, mode_expected,
