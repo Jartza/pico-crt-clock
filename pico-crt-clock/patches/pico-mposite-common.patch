@@ -1,50 +1,63 @@
 diff --git a/cvideo.c b/cvideo.c
-index b915759..2d4c05d 100644
+index b915759..b07d3df 100644
 --- a/cvideo.c
 +++ b/cvideo.c
-@@ -26,7 +26,8 @@
+@@ -26,8 +26,8 @@
  
  #include "hardware/pio.h"
  #include "hardware/dma.h"
 -#include "hardware/irq.h"   
+-
 +#include "hardware/irq.h"
 +#include "hardware/gpio.h"
- 
  #include "charset.h"            // The character set
  #include "cvideo.h"
-@@ -122,7 +123,12 @@ int initialise_cvideo(void) {
+ #include "graphics.h"
+@@ -45,7 +45,10 @@ uint bline;                     // Line in the bitmap to fetch
+ 
+ uint vblank_count;              // Vblank counter
+ 
+-unsigned char * bitmap;         // Bitmap buffer
++// Fixed 256x192 framebuffer for the MicroPython firmware.  This avoids a
++// large malloc from the RP2040 C heap and keeps video memory in static SRAM.
++static unsigned char bitmap_storage[256 * 192];
++unsigned char * bitmap = bitmap_storage;
+ 
+ int width = 256;                // Bitmap dimensions             
+ int height = 192;
+@@ -122,7 +125,12 @@ int initialise_cvideo(void) {
  		gpio_base,								// Start pin in the GPIO
  		gpio_count,								// Number of pins
  		piofreq_0								// State machine clock frequency
 -	);	
 +	);
-+    // Join unused RX FIFO into TX — doubles TX depth from 4 to 8 entries
-+    // (~8µs → ~16µs margin for cvideo_dma_handler before sync SM stalls).
-+    // Bit 30 of SM SHIFTCTRL = FJOIN_TX (RP2040 datasheet §3.5.4).
++    // Join unused RX FIFO into TX -- doubles TX depth from 4 to 8 entries
++    // (~8us -> ~16us margin for cvideo_dma_handler before sync SM stalls).
++    // Bit 30 of SM SHIFTCTRL = FJOIN_TX (RP2040 datasheet section 3.5.4).
 +    pio_0->sm[sm_sync].shiftctrl |= (1u << 30);
 +
      cvideo_configure_pio_dma(					// Configure the DMA
          pio_0,									// The PIO to attach this DMA to
          sm_sync,								// The state machine number
-@@ -136,7 +142,7 @@ int initialise_cvideo(void) {
+@@ -132,8 +140,6 @@ int initialise_cvideo(void) {
+         cvideo_dma_handler						// The DMA handler
+     );
  
+-    bitmap = malloc(width * height);            // Allocate the bitmap memory
+-
  	// Initialise the second PIO (pixel data)
  	//
--    cvideo_data_initialise_pio(					
-+    cvideo_data_initialise_pio(
- 		pio_0,
- 		sm_data,
- 		offset_1,
+     cvideo_data_initialise_pio(					
 @@ -144,6 +150,8 @@ int initialise_cvideo(void) {
  		gpio_count,
  		piofreq_1_256
  	);
-+    // Same for pixel SM — 8-entry TX FIFO reduces underrun risk on DMA ch1 reload.
++    // Same for pixel SM -- 8-entry TX FIFO reduces underrun risk on DMA ch1 reload.
 +    pio_0->sm[sm_data].shiftctrl |= (1u << 30);
  
      // Initialise the DMA
      //
-@@ -164,7 +172,15 @@ int initialise_cvideo(void) {
+@@ -164,9 +172,17 @@ int initialise_cvideo(void) {
      irq_set_enabled(PIO0_IRQ_0, true);			// Enable it    
  
      set_border(0);                              // Set the border colour
@@ -52,37 +65,81 @@ index b915759..2d4c05d 100644
 +    cls(0);                                     // Clear the screen
 +
 +    // Reduce DAC GPIO drive strength and slew rate to limit switching noise on
-+    // the 3.3V supply rail — helps USB coexistence.  Video quality is unaffected:
++    // the 3.3V supply rail -- helps USB coexistence.  Video quality is unaffected:
 +    // even SLOW slew gives ~2ns edges, well inside the 200ns pixel period.
 +    for (uint g = gpio_base; g < (uint)(gpio_base + gpio_count); g++) {
 +        gpio_set_slew_rate(g, GPIO_SLEW_RATE_SLOW);
 +        gpio_set_drive_strength(g, GPIO_DRIVE_STRENGTH_2MA);
 +    }
  
- 	// Start the PIO state machines
+-	// Start the PIO state machines
++// Start the PIO state machines
  	//
-@@ -245,7 +261,8 @@ void wait_vblank(void) {
+ 	pio_enable_sm_mask_in_sync(pio_0, (1u << sm_data) | (1u << sm_sync));
+     return 0;
+@@ -176,30 +192,13 @@ int initialise_cvideo(void) {
+ // mode - The graphics mode (0 = 256x192, 1 = 320 x 192, 2 = 640 x 192)
+ //
+ int set_mode(int mode) {
+-    double dfreq;
+-
+     wait_vblank();
+ 
+-    switch(mode) {                              // Get the video mode
+-        case 1: 
+-            width = 320;                        // Set screen width and
+-            dfreq = piofreq_1_320;              // pixel dot frequency accordingly
+-            break;
+-        case 2: 
+-            width = 640;                
+-            dfreq = piofreq_1_640;
+-            break;
+-        default:
+-            width = 256;
+-            dfreq = piofreq_1_256;
+-            break;            
+-
+-    }
+-
+-    if(bitmap != NULL) {
+-        free(bitmap);
++    // Fixed 256x192 framebuffer in static SRAM: higher modes are unsupported.
++    if (mode != 0) {
++        return -1;
+     }
+-    bitmap = malloc(width * height);            // Allocate the bitmap memory
++    width = 256;
+ 
+     cvideo_configure_pio_dma(                   // Reconfigure the DMA
+         pio_0,	
+@@ -210,7 +209,7 @@ int set_mode(int mode) {
+         NULL									// But there is no DMA interrupt for the pixel data
+     ); 
+ 
+-    pio_0->sm[sm_data].clkdiv = (uint32_t) (dfreq * (1 << 16));
++    pio_0->sm[sm_data].clkdiv = (uint32_t)(piofreq_1_256 * (1 << 16));
+ 
+     return 0;
+ }
+@@ -245,7 +244,7 @@ void wait_vblank(void) {
  // This sets up the DMA for cvideo_data with pixel data and is triggered by the irq set 0
  // instruction at the end of the PIO
  //
 -void cvideo_pio_handler(void) {
-+// In SRAM via __not_in_flash_func — avoids XIP latency during interrupt dispatch.
 +void __not_in_flash_func(cvideo_pio_handler)(void) {
      if(bline >= height) {
          bline = 0;
      }
-@@ -255,8 +272,8 @@ void cvideo_pio_handler(void) {
- 
+@@ -256,7 +255,7 @@ void cvideo_pio_handler(void) {
  // The DMA interrupt handler
  // This feeds the state machine cvideo_sync with data for the PAL(ish) video signal
--// 
+ // 
 -void cvideo_dma_handler(void) {
-+//
 +void __not_in_flash_func(cvideo_dma_handler)(void) {
  	
      // Switch condition on the vertical scanline number (vline)
      // Each statement does a dma_channel_set_read_addr to point the PIO to the next data to output
-@@ -301,7 +318,47 @@ void cvideo_dma_handler(void) {
+@@ -301,7 +300,47 @@ void cvideo_dma_handler(void) {
  
      // Finally, clear the interrupt request ready for the next horizontal sync interrupt
      //
@@ -91,7 +148,7 @@ index b915759..2d4c05d 100644
 +}
 +
 +// Stop PIO state machines, abort DMA channels, disable IRQs and zero DAC GPIO pins.
-+// Must be called from core1 — the IRQs are owned by core1's NVIC.
++// Must be called from core1 -- the IRQs are owned by core1's NVIC.
 +//
 +void deinit_cvideo(void) {
 +    // Disable IRQs first so handlers can't re-arm after we abort.
@@ -131,7 +188,7 @@ index b915759..2d4c05d 100644
  }
  
  // Configure the PIO DMA
-@@ -325,8 +382,9 @@ void cvideo_configure_pio_dma(PIO pio, uint sm, uint dma_channel, uint transfer_
+@@ -325,8 +364,9 @@ void cvideo_configure_pio_dma(PIO pio, uint sm, uint dma_channel, uint transfer_
          true                        // Start flag (true = start immediately)
      );
      if(handler != NULL) {

@@ -332,21 +332,32 @@ def _fetch_and_store():
         for section, sec_n in sec_counts:
             for page in range(1, sec_n + 1):
                 gc.collect()
-                r = urequests.get(
-                    "https://content.guardianapis.com/search"
-                    "?section={}&type=article&tag=tone/news&order-by=newest"
-                    "&show-fields=headline,trailText,body"
-                    "&page-size=1&page={}&api-key={}".format(
-                        section, page, NEWS_API_KEY),
-                    timeout=30)
-                # Stream response to flash in 512-byte chunks (no large allocation)
-                with open('_ntmp', 'wb') as f:
-                    while True:
-                        chunk = r.raw.read(512)
-                        if not chunk:
-                            break
-                        f.write(chunk)
-                r.close()
+                r = None
+                try:
+                    r = urequests.get(
+                        "https://content.guardianapis.com/search"
+                        "?section={}&type=article&tag=tone/news&order-by=newest"
+                        "&show-fields=headline,trailText,body"
+                        "&page-size=1&page={}&api-key={}".format(
+                            section, page, NEWS_API_KEY),
+                        timeout=30)
+                    # Stream response to flash in small chunks so Python heap use stays flat.
+                    with open('_ntmp', 'wb') as f:
+                        while True:
+                            chunk = r.raw.read(512)
+                            if not chunk:
+                                break
+                            f.write(chunk)
+                finally:
+                    # Close the socket/TLS stream even if reading or writing fails.
+                    # Those resources live outside the MicroPython heap, so gc.mem_free()
+                    # can look healthy while lwIP/CYW43 is out of memory.
+                    if r is not None:
+                        try:
+                            r.close()
+                        except Exception:
+                            pass
+                        r = None
                 gc.collect()
 
                 # Extract headline as a short string (safe in RAM)

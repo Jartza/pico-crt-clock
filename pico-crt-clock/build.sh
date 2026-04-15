@@ -171,15 +171,14 @@ if [ ! -f "$ROOT/micropython/mpy-cross/build/mpy-cross" ]; then
 fi
 
 # 4. CMake configure + pioasm
-if [ ! -f "$PIOASM" ]; then
-    echo "Configuring cmake (build dir: $BUILD_DIR, variant: $VARIANT)..."
-    cmake -S "$MP_PORT" -B "$BUILD_DIR" \
-        -DPICO_BUILD_DOCS=0 \
-        -DMICROPY_BOARD=$BOARD \
-        -DUSER_C_MODULES="$MODULE_CMAKE" \
-        -DMICROPY_C_HEAP_SIZE=94208 \
-        $CMAKE_EXTRA
+echo "Configuring cmake (build dir: $BUILD_DIR, variant: $VARIANT)..."
+cmake -S "$MP_PORT" -B "$BUILD_DIR" \
+    -DPICO_BUILD_DOCS=0 \
+    -DMICROPY_BOARD=$BOARD \
+    -DUSER_C_MODULES="$MODULE_CMAKE" \
+    $CMAKE_EXTRA
 
+if [ ! -f "$PIOASM" ]; then
     echo "Building pioasm..."
     make -C "$BUILD_DIR" pioasmBuild
 fi

@@ -117,20 +117,39 @@ def fetch_weather():
         LATITUDE, LONGITUDE)
     tunit = "fahrenheit" if TEMP_UNIT == "F" else "celsius"
     try:
-        r = urequests.get(
-            base + "&current=weather_code,wind_speed_10m"
-                   "&daily=weather_code,temperature_2m_max,sunshine_duration"
-                   ",daylight_duration,precipitation_sum,precipitation_probability_mean"
-                   "&forecast_days=7&temperature_unit={}&wind_speed_unit={}".format(tunit, WIND_UNIT),
-            timeout=30)
-        data = json.loads(r.content)
-        r.close()
+        r = None
+        try:
+            r = urequests.get(
+                base + "&current=weather_code,wind_speed_10m"
+                       "&daily=weather_code,temperature_2m_max,sunshine_duration"
+                       ",daylight_duration,precipitation_sum,precipitation_probability_mean"
+                       "&forecast_days=7&temperature_unit={}&wind_speed_unit={}".format(tunit, WIND_UNIT),
+                timeout=30)
+            data = json.loads(r.content)
+        finally:
+            if r is not None:
+                try:
+                    r.close()
+                except Exception:
+                    pass
+                r = None
         gc.collect()
-        r = urequests.get(
-            base + "&hourly=temperature_2m&forecast_days=1&temperature_unit={}".format(tunit),
-            timeout=30)
-        data['hourly'] = json.loads(r.content)['hourly']
-        r.close()
+
+        try:
+            r = urequests.get(
+                base + "&hourly=temperature_2m&forecast_days=1&temperature_unit={}".format(tunit),
+                timeout=30)
+            hourly = json.loads(r.content)
+        finally:
+            if r is not None:
+                try:
+                    r.close()
+                except Exception:
+                    pass
+                r = None
+        data['hourly'] = hourly['hourly']
+        del hourly
+        gc.collect()
         return data
     except Exception:
         return None
