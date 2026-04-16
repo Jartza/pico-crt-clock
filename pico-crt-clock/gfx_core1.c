@@ -172,5 +172,17 @@ static void core1_main(void) {
 static uint32_t core1_stack[1024];  // 4 KB — ample for initialise_cvideo() + dispatch loop
 
 void gfx_core1_launch(void) {
+    // PSM-reset core1 back to ROM boot state before launching.
+    // multicore_launch_core1_with_stack() only sends the FIFO handshake; it
+    // does NOT reset core1 itself.  On first call core1 is in ROM from
+    // power-on and the handshake works by accident, but after gfx.deinit()
+    // core1 is parked in while(1)__wfe() (user code), so the handshake
+    // would block forever waiting for core1's ROM echo.
+    // multicore_reset_core1() also clears lockout_victim_initialized[1] so
+    // multicore_lockout_victim_init() works correctly on re-launch.
+    multicore_reset_core1();
+    // Clear the deinit flag so the next gfx.deinit() actually waits for
+    // core1 to finish rather than returning immediately.
+    gfx_deinit_done = false;
     multicore_launch_core1_with_stack(core1_main, core1_stack, sizeof(core1_stack));
 }
