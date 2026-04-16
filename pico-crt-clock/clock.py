@@ -304,7 +304,8 @@ def run(pin=None):
             if _today_hrs is not None and _today_hrs[h] is not None:
                 cur_temp = _today_hrs[h]
 
-        if SCREENSAVER_SPEED < 999 and time.ticks_diff(time.ticks_ms(), last_move) >= (SCREENSAVER_SPEED * 50):
+        _ss_speed = (read_speed_adc() >> 3) if USE_ADC_SPEED else SCREENSAVER_SPEED
+        if _ss_speed < 999 and time.ticks_diff(time.ticks_ms(), last_move) >= (_ss_speed * 50):
             last_move = time.ticks_ms()
             ox += vx
             oy += vy

@@ -525,7 +525,7 @@ def _show_article(filename, pin, mode_counter, mode_expected,
                 sub_px = 0
                 nxt     = f.readline()
                 nxtline = nxt.rstrip() if nxt else None
-            time.sleep_ms(SCROLL_DELAY_MS)
+            time.sleep_ms(read_speed_adc() if USE_ADC_SPEED else SCROLL_DELAY_MS)
 
     deadline = time.ticks_add(time.ticks_ms(), HOLD_AFTER_MS)
     while time.ticks_diff(deadline, time.ticks_ms()) > 0:

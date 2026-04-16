@@ -14,6 +14,7 @@ __all__ = [
     'BLACK', 'WHITE', 'WIFI_TIMEOUT_MS',
     '_weekday', '_last_sunday', '_utc_offset',
     'draw_banner', 'connect_wifi', 'reconnect_wifi', 'sync_ntp', 'check_pin_stable',
+    'read_speed_adc',
 ]
 
 BLACK = 0
@@ -120,6 +121,17 @@ def sync_ntp(clear=False):
     except Exception:
         gfx.cls(BLACK)
         return False
+
+_speed_adc = None
+
+def read_speed_adc():
+    """Read speed potentiometer on GPIO 26. Returns 0-255, or None if USE_ADC_SPEED is False."""
+    global _speed_adc
+    if not USE_ADC_SPEED:
+        return None
+    if _speed_adc is None:
+        _speed_adc = machine.ADC(26)
+    return _speed_adc.read_u16() >> 8
 
 # For mode switching: require a pin mismatch to persist for threshold milliseconds
 # before treating it as a real state change. The counter stores the first

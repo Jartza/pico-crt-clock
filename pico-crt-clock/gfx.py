@@ -265,8 +265,9 @@ _border_colour = 0
 # The detail pin starts LOW (summary mode, matching hardware default) and persists
 # across soft-resets via _detail_low.
 _sim_pins    = []
-_desired_mode = 0   # persists across sim reboots; updated by _set_gpio_mode
+_desired_mode = 0      # persists across sim reboots; updated by _set_gpio_mode
 _detail_low   = True   # True = pin 3 LOW = summary (default); False = HIGH = full news
+_adc_value    = 32768  # simulated ADC raw value 0-65535; o=raise, p=lower (step 2048)
 
 class _SimPin:
     __slots__ = ('_low',)
@@ -303,15 +304,16 @@ def _update_caption():
     keys = "abc"
     n_mode = min(len(_sim_pins), 3)
     active = next((i for i, p in enumerate(_sim_pins[:3]) if p._low), None)
+    adc_disp = f"  o/p=ADC:{_adc_value >> 8}"
     if _sim_pins:
         hints = "  ".join(f"{keys[i]}=mode {i}" for i in range(n_mode))
         if len(_sim_pins) > 3:
             det = "summary" if _sim_pins[3]._low else "full news"
             hints += f"  d={det}"
         mode  = f"mode {active}" if active is not None else "default"
-        caption = f"pico-crt-clock sim [{font_tag}]  |  {hints}  ESC=default  [{mode}]"
+        caption = f"pico-crt-clock sim [{font_tag}]  |  {hints}  ESC=default  [{mode}]{adc_disp}"
     else:
-        caption = f"pico-crt-clock sim [{font_tag}]"
+        caption = f"pico-crt-clock sim [{font_tag}]{adc_disp}"
     pygame.display.set_caption(caption)
 
 def _ensure_init():
@@ -344,6 +346,13 @@ def _pump():
                 _set_gpio_mode(_KEY_TO_PIN[ev.key])
             elif ev.key == pygame.K_d:
                 _toggle_detail_pin()
+            elif ev.key == pygame.K_o:
+                global _adc_value
+                _adc_value = min(65535, _adc_value + 2048)
+                _update_caption()
+            elif ev.key == pygame.K_p:
+                _adc_value = max(0, _adc_value - 2048)
+                _update_caption()
             elif ev.key == pygame.K_ESCAPE:
                 _set_gpio_mode(-1)
                 global _detail_low

@@ -69,3 +69,8 @@ WIND_UNIT = "ms"
 # Screen saver speed: 0 = fastest, 20 = move screen 1px/1px once per second
 # 999 = disabled (never move the screen)
 SCREENSAVER_SPEED = 2
+
+# Set USE_ADC_SPEED = True to use a potentiometer on GPIO 26 to adjust the
+# weather clock screensaver speed and newsreader scroll speed instead of the
+# configured values above.
+USE_ADC_SPEED = False

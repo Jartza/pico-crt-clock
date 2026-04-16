@@ -112,8 +112,15 @@ class _Pin:
             return self._sim.value()
         self._sim._low = not bool(v)
 
+class _ADC:
+    def __init__(self, pin):
+        pass
+    def read_u16(self):
+        return _gfx._adc_value
+
 machine               = types.ModuleType('machine')
 machine.Pin           = _Pin
+machine.ADC           = _ADC
 machine.PWRON_RESET   = 1
 machine.WDT_RESET     = 3
 machine.reset_cause   = _reset_cause
