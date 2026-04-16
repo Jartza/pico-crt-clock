@@ -305,7 +305,7 @@ def _fetch_and_store():
     Returns number of articles stored, 0 on failure."""
     reconnect_wifi(wlan)
     gc.collect()
-    gfx.cls(BLACK)
+    gfx.deinit()
     try:
         sections = [s.strip() for s in NEWS_SECTIONS.split(',') if s.strip()]
 
@@ -391,8 +391,10 @@ def _fetch_and_store():
                 count += 1
                 del headline, tlines
                 gc.collect()
+        gfx.init()
         return count
     except Exception as e:
+        gfx.init()
         # no traceback on Pico
         print("news fetch error: {}: {}".format(type(e).__name__, e))
         return 0
