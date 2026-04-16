@@ -304,9 +304,7 @@ def _fetch_and_store():
     it with _CHUNK-byte reads. No large contiguous heap allocation needed.
     Returns number of articles stored, 0 on failure."""
     reconnect_wifi(wlan)
-    draw_banner("Fetching news (black screen)")
     gc.collect()
-    time.sleep_ms(4000)
     gfx.cls(BLACK)
     try:
         sections = [s.strip() for s in NEWS_SECTIONS.split(',') if s.strip()]
@@ -549,7 +547,7 @@ def run(pin=None):
     gfx.set_border(0)
     gfx.cls(BLACK)
 
-    # GPIO 13: detail switch - low = show full article, high (default) = summary
+    # GPIO 13: detail switch - low/down = summary, high/up = full news
     detail_pin = _Pin(13, _Pin.IN, _Pin.PULL_UP)
 
     wlan = connect_wifi()
@@ -572,7 +570,7 @@ def run(pin=None):
 
     mode_expected = 0
     mode_counter = 0
-    detail_expected = detail_pin.value()
+    detail_expected = 0   # 0 = summary (pin low/down), 1 = full news (pin high/up)
     detail_counter = 0
 
     while True:
@@ -584,6 +582,22 @@ def run(pin=None):
         files = _list_files()
 
         if not files or now - last_fetch_ts >= NEWS_INTERVAL:
+            draw_banner("Fetching news (black screen)")
+            deadline = time.ticks_add(time.ticks_ms(), 4000)
+            escaped = False
+            while time.ticks_diff(deadline, time.ticks_ms()) > 0:
+                active, mode_counter = check_pin_stable(pin, mode_expected, mode_counter)
+                if not active:
+                    return
+                active, detail_counter = check_pin_stable(detail_pin, detail_expected, detail_counter)
+                if not active:
+                    detail_expected = detail_pin.value()
+                    detail_counter = 0
+                    escaped = True
+                    break
+                time.sleep_ms(10)
+            if escaped:
+                continue
             n = _fetch_and_store()
             if n > 0:
                 last_fetch_ts = time.time()
@@ -609,9 +623,9 @@ def run(pin=None):
             active, mode_counter = check_pin_stable(pin, mode_expected, mode_counter)
             if not active:
                 return
-            # Select file based on detail switch: high = summary (default), low = full article
+            # Select file based on detail switch: low/down = summary, high/up = full news
             base = files[idx]
-            if detail_expected:   # high = summary mode (hardware default, pull-up)
+            if not detail_expected:   # low = summary mode
                 spath = base[:-4] + '_sum.txt'
                 try:
                     os.stat(spath)
@@ -619,7 +633,7 @@ def run(pin=None):
                 except OSError:
                     show_file = base   # fall back to full if no summary cached
             else:
-                show_file = base       # low = full article mode (switch to GND)
+                show_file = base       # high = full news mode
             hold = HOLD_SUM_MS if show_file != base else HOLD_MS
             result, mode_counter, detail_counter, detail_expected = _show_article(
                 show_file, pin, mode_counter, mode_expected, detail_pin,

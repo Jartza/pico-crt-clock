@@ -266,7 +266,7 @@ _border_colour = 0
 # across soft-resets via _detail_low.
 _sim_pins    = []
 _desired_mode = 0   # persists across sim reboots; updated by _set_gpio_mode
-_detail_low   = False  # False = pin 3 HIGH = summary (hardware default, pull-up)
+_detail_low   = True   # True = pin 3 LOW = summary (default); False = HIGH = full news
 
 class _SimPin:
     __slots__ = ('_low',)
@@ -289,7 +289,7 @@ def _set_gpio_mode(idx):
 
 def _toggle_detail_pin():
     """Toggle pin 3 (detail/summary switch) independently of mode pins.
-    LOW = summary (default), HIGH = full article."""
+    LOW = summary (default), HIGH = full news."""
     global _detail_low
     _detail_low = not _detail_low
     if len(_sim_pins) > 3:
@@ -306,7 +306,7 @@ def _update_caption():
     if _sim_pins:
         hints = "  ".join(f"{keys[i]}=mode {i}" for i in range(n_mode))
         if len(_sim_pins) > 3:
-            det = "summary" if _sim_pins[3]._low else "full article"
+            det = "summary" if _sim_pins[3]._low else "full news"
             hints += f"  d={det}"
         mode  = f"mode {active}" if active is not None else "default"
         caption = f"pico-crt-clock sim [{font_tag}]  |  {hints}  ESC=default  [{mode}]"
