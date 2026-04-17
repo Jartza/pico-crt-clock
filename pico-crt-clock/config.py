@@ -32,6 +32,16 @@ NEWS_BODY_LINES = 105
 # 125 is about 1 row of text per second.
 NEWS_SCROLL_SPEED = 125
 
+# RSVP (rapid serial visual presentation) reading speed in words per minute.
+# Used when the news detail switch is in the third position.  Comfortable range
+# is 200-400; experienced speed readers can handle 500-600.
+RSVP_WPM = 300
+
+# Set True to draw full-width horizontal rails above and below the RSVP word
+# row (Spritz-style reading window).  The small vertical pointer marks at the
+# highlighted letter always remain regardless of this setting.
+RSVP_RAILS = False
+
 # Timezone: base UTC offset in whole hours (without DST).
 # Examples: Finland/EET=2, Germany/CET=1, UK/GMT=0, EST=-5
 UTC_OFFSET = 2

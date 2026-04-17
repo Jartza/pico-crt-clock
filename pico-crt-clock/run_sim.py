@@ -11,7 +11,8 @@ GPIO simulation (switches between modes):
   a       pull GPIO for mode 0 (clock/weather) low
   b       pull GPIO for mode 1 (torus) low
   c       pull GPIO for mode 2 (news) low
-  d       pull GPIO 13 low (news detail switch: show full article instead of summary)
+  d       cycle news detail switch: summary -> rsvp -> full -> summary
+          (summary = GPIO 13 low, rsvp = GPIO 14 low, full = both high)
   ESC     release all pins -> default mode (clock/weather with no switch)
 
   Pressing a key latches that mode until ESC is pressed, mirroring a physical
@@ -102,8 +103,10 @@ class _Pin:
         if idx < 3:
             if idx == _gfx._desired_mode:
                 self._sim._low = True   # restore mode pin that was active before reboot
-        else:
-            self._sim._low = _gfx._detail_low  # restore detail switch state
+        elif idx == 3:
+            self._sim._low = (_gfx._detail_mode == 1)   # GPIO 13 low = summary
+        elif idx == 4:
+            self._sim._low = (_gfx._detail_mode == 2)   # GPIO 14 low = rsvp
         _gfx._sim_pins.append(self._sim)
         _gfx._update_caption()
 

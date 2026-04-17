@@ -261,13 +261,15 @@ _border_colour = 0
 # GPIO simulation
 # SimPin objects are appended here in order as machine.Pin() is called.
 # Keys a/b/c switch modes exclusively (only one low at a time); ESC = all high.
-# Key d independently toggles the detail pin (index 3) without affecting mode pins.
-# The detail pin starts LOW (summary mode, matching hardware default) and persists
-# across soft-resets via _detail_low.
+# Key d cycles the news detail switch through its 3 positions (summary -> rsvp ->
+# full -> summary), driving sim pins 3 (GPIO 13) and 4 (GPIO 14) accordingly.
+# Detail mode persists across soft-resets via _detail_mode.
 _sim_pins    = []
 _desired_mode = 0      # persists across sim reboots; updated by _set_gpio_mode
-_detail_low   = True   # True = pin 3 LOW = summary (default); False = HIGH = full news
+_detail_mode  = 1      # 0=full, 1=summary, 2=rsvp (default: summary, matches prior sim default)
 _adc_value    = 32768  # simulated ADC raw value 0-65535; o=raise, p=lower (step 2048)
+
+_DETAIL_LABELS = ("full news", "summary", "RSVP")
 
 class _SimPin:
     __slots__ = ('_low',)
@@ -288,13 +290,27 @@ def _set_gpio_mode(idx):
         p._low = (i == idx)
     _update_caption()
 
-def _toggle_detail_pin():
-    """Toggle pin 3 (detail/summary switch) independently of mode pins.
-    LOW = summary (default), HIGH = full news."""
-    global _detail_low
-    _detail_low = not _detail_low
+def _apply_detail():
+    """Drive sim pins 3 (GPIO 13) and 4 (GPIO 14) from _detail_mode.
+    Mode 0 (full):    both pins high.
+    Mode 1 (summary): pin 3 (GPIO 13) low, pin 4 high.
+    Mode 2 (rsvp):    pin 3 high, pin 4 (GPIO 14) low."""
     if len(_sim_pins) > 3:
-        _sim_pins[3]._low = _detail_low
+        _sim_pins[3]._low = (_detail_mode == 1)
+    if len(_sim_pins) > 4:
+        _sim_pins[4]._low = (_detail_mode == 2)
+
+def _cycle_detail():
+    """Advance the 3-position news switch: full -> summary -> rsvp -> full."""
+    global _detail_mode
+    _detail_mode = (_detail_mode + 1) % 3
+    _apply_detail()
+    _update_caption()
+
+def _reset_detail():
+    global _detail_mode
+    _detail_mode = 1
+    _apply_detail()
     _update_caption()
 
 def _update_caption():
@@ -308,8 +324,7 @@ def _update_caption():
     if _sim_pins:
         hints = "  ".join(f"{keys[i]}=mode {i}" for i in range(n_mode))
         if len(_sim_pins) > 3:
-            det = "summary" if _sim_pins[3]._low else "full news"
-            hints += f"  d={det}"
+            hints += f"  d={_DETAIL_LABELS[_detail_mode]}"
         mode  = f"mode {active}" if active is not None else "default"
         caption = f"pico-crt-clock sim [{font_tag}]  |  {hints}  ESC=default  [{mode}]{adc_disp}"
     else:
@@ -345,7 +360,7 @@ def _pump():
             if ev.key in _KEY_TO_PIN:
                 _set_gpio_mode(_KEY_TO_PIN[ev.key])
             elif ev.key == pygame.K_d:
-                _toggle_detail_pin()
+                _cycle_detail()
             elif ev.key == pygame.K_o:
                 global _adc_value
                 _adc_value = min(65535, _adc_value + 2048)
@@ -355,11 +370,7 @@ def _pump():
                 _update_caption()
             elif ev.key == pygame.K_ESCAPE:
                 _set_gpio_mode(-1)
-                global _detail_low
-                _detail_low = True
-                if len(_sim_pins) > 3:
-                    _sim_pins[3]._low = True
-                _update_caption()
+                _reset_detail()
             else:
                 _key_queue.append(ev.key)
 

@@ -28,6 +28,45 @@ HOLD_SUM_MS     = NEWS_HOLD_SUM   * 1000
 HOLD_AFTER_MS   = NEWS_HOLD_AFTER * 1000
 SCROLL_DELAY_MS = NEWS_SCROLL_SPEED
 
+# RSVP (rapid serial visual presentation) layout
+# Header occupies y=0..39 (unchanged, drawn with _draw_header).
+# Word is rendered in 2x font at y=RSVP_WORD_Y, centered vertically in the body region.
+# ORP (optimal recognition point) letter's left edge sits at RSVP_ORP_X so the eye
+# locks onto a fixed column across words of varying length.
+RSVP_WORD_Y  = 108
+RSVP_ORP_X   = 120
+RSVP_PIN_COL = 127   # pinpoint column: ORP left edge + 7
+RSVP_MAX_LEN = 16    # word chars that fit at 2x font (16 px/char * 16 = 256)
+COLOUR6      = 6     # mid-gray background for ORP highlight
+
+# News detail switch modes, derived from GPIO 13 + GPIO 14 pin values.
+# Pos 1 (GPIO13 H, GPIO14 H) = RSVP
+# Pos 2 (GPIO13 L, GPIO14 H) = summary
+# Pos 3 (GPIO13 H, GPIO14 L) = full article
+MODE_FULL    = 0
+MODE_SUMMARY = 1
+MODE_RSVP    = 2
+
+def _detail_mode(v13, v14):
+    if v14 == 0:
+        return MODE_FULL
+    if v13 == 0:
+        return MODE_SUMMARY
+    return MODE_RSVP
+
+def _check_detail_swap(p13, c13, e13, p14, c14, e14):
+    """Poll both detail pins. Return (swap, c13, e13, c14, e14) where swap is True
+    if either pin has changed to a new stable value. Caller recomputes mode."""
+    if p13 is not None:
+        active, c13 = check_pin_stable(p13, e13, c13)
+        if not active:
+            return True, 0, p13.value(), c14, e14
+    if p14 is not None:
+        active, c14 = check_pin_stable(p14, e14, c14)
+        if not active:
+            return True, c13, e13, 0, p14.value()
+    return False, c13, e13, c14, e14
+
 NEWS_DIR = 'newscache'
 _CHUNK   = 64   # bytes per read when scanning JSON
 
@@ -454,9 +493,11 @@ def _draw_header(t1, t2, section=''):
 
 # Article display
 def _show_article(filename, pin, mode_counter, mode_expected,
-                  detail_pin=None, detail_counter=0, detail_expected=1, hold_ms=None):
+                  p13=None, c13=0, e13=1,
+                  p14=None, c14=0, e14=1,
+                  hold_ms=None):
     """Display one article with smooth scroll if content exceeds screen height.
-    Returns (result, mode_counter, detail_counter, detail_expected)."""
+    Returns (result, mode_counter, c13, e13, c14, e14)."""
 
     if hold_ms is None:
         hold_ms = HOLD_MS
@@ -492,16 +533,15 @@ def _show_article(filename, pin, mode_counter, mode_expected,
         while time.ticks_diff(deadline, time.ticks_ms()) > 0:
             active, mode_counter = check_pin_stable(pin, mode_expected, mode_counter)
             if not active:
-                return 'MODE', mode_counter, detail_counter, detail_expected
-            active, detail_counter = check_pin_stable(detail_pin, detail_expected, detail_counter)
-            if not active:
+                return 'MODE', mode_counter, c13, e13, c14, e14
+            swap, c13, e13, c14, e14 = _check_detail_swap(p13, c13, e13, p14, c14, e14)
+            if swap:
                 gfx.cls(BLACK)
-                detail_expected = detail_pin.value()
-                return 'SWAP', mode_counter, 0, detail_expected
+                return 'SWAP', mode_counter, c13, e13, c14, e14
             time.sleep_ms(10)
         if nxtline is None:
             # fits on one screen - initial hold was enough, move on
-            return None, mode_counter, detail_counter, detail_expected
+            return None, mode_counter, c13, e13, c14, e14
 
         # Smooth scroll: 1 px/frame, new body line every LINE_H pixels.
         # Print the incoming line at 192-sub_px each frame so it rises into
@@ -510,12 +550,11 @@ def _show_article(filename, pin, mode_counter, mode_expected,
         while nxtline is not None:
             active, mode_counter = check_pin_stable(pin, mode_expected, mode_counter)
             if not active:
-                return 'MODE', mode_counter, detail_counter, detail_expected
-            active, detail_counter = check_pin_stable(detail_pin, detail_expected, detail_counter)
-            if not active:
+                return 'MODE', mode_counter, c13, e13, c14, e14
+            swap, c13, e13, c14, e14 = _check_detail_swap(p13, c13, e13, p14, c14, e14)
+            if swap:
                 gfx.cls(BLACK)
-                detail_expected = detail_pin.value()
-                return 'SWAP', mode_counter, 0, detail_expected
+                return 'SWAP', mode_counter, c13, e13, c14, e14
             gfx.wait_vblank()
             gfx.scroll_up(BLACK, 1)
             _draw_header(t1, t2, section)
@@ -531,14 +570,129 @@ def _show_article(filename, pin, mode_counter, mode_expected,
     while time.ticks_diff(deadline, time.ticks_ms()) > 0:
         active, mode_counter = check_pin_stable(pin, mode_expected, mode_counter)
         if not active:
-            return 'MODE', mode_counter, detail_counter, detail_expected
-        active, detail_counter = check_pin_stable(detail_pin, detail_expected, detail_counter)
-        if not active:
+            return 'MODE', mode_counter, c13, e13, c14, e14
+        swap, c13, e13, c14, e14 = _check_detail_swap(p13, c13, e13, p14, c14, e14)
+        if swap:
             gfx.cls(BLACK)
-            detail_expected = detail_pin.value()
-            return 'SWAP', mode_counter, 0, detail_expected
+            return 'SWAP', mode_counter, c13, e13, c14, e14
         time.sleep_ms(10)
-    return None, mode_counter, detail_counter, detail_expected
+    return None, mode_counter, c13, e13, c14, e14
+
+# RSVP helpers
+def _orp_index(word_len):
+    """Spritz-style Optimal Recognition Point position for a word of this length."""
+    if word_len <= 1: return 0
+    if word_len <= 5: return 1
+    if word_len <= 9: return 2
+    if word_len <= 13: return 3
+    return 4
+
+def _current_wpm():
+    """Reading speed in words per minute, overridden live by the ADC pot when enabled."""
+    adc = read_speed_adc()
+    if adc is None:
+        return RSVP_WPM
+    return 100 + (adc * 500) // 255
+
+def _tokenize_body(f):
+    """Stream words from the article body. Each yield is (word, multiplier) where
+    multiplier is an extra fraction of base_ms to hold the current tick:
+      0.0  - plain word
+      0.5  - after comma / semicolon / colon
+      1.0  - after sentence terminator (. ! ?)
+      2.0  - paragraph break (empty word, pause only)
+    Words longer than RSVP_MAX_LEN are truncated with '~' so they still fit the 2x layout."""
+    while True:
+        line = f.readline()
+        if not line:
+            return
+        s = line.rstrip()
+        if not s:
+            yield '', 2.0
+            continue
+        for word in s.split():
+            last = word[-1]
+            if last in '.!?':
+                mult = 1.0
+            elif last in ',;:':
+                mult = 0.5
+            else:
+                mult = 0.0
+            if len(word) > RSVP_MAX_LEN:
+                word = word[:RSVP_MAX_LEN - 1] + '~'
+            yield word, mult
+
+def _draw_rsvp_pinpoint():
+    """Short vertical pinpoint marks above/below the word row at the fixed ORP
+    column. Optional full-width horizontal rails (Spritz-style reading window)
+    when RSVP_RAILS is True."""
+    y_top_out = RSVP_WORD_Y - 10
+    y_top_in  = RSVP_WORD_Y - 3    # inner end: 2 px before the glyph
+    y_bot_in  = RSVP_WORD_Y + 18   # inner end: 2 px below the glyph
+    y_bot_out = RSVP_WORD_Y + 25
+    gfx.line(RSVP_PIN_COL, y_top_out, RSVP_PIN_COL, y_top_in, WHITE)
+    gfx.line(RSVP_PIN_COL, y_bot_in,  RSVP_PIN_COL, y_bot_out, WHITE)
+    if RSVP_RAILS:
+        gfx.hline(y_top_out, 0, 255, WHITE)
+        gfx.hline(y_bot_out, 0, 255, WHITE)
+
+def _show_article_rsvp(filename, pin, mode_counter, mode_expected,
+                       p13, c13, e13, p14, c14, e14):
+    """Display one article RSVP-style: one word per tick in 2x font, ORP letter
+    highlighted with a color-6 background, pinpoint marks at the fixed ORP column.
+    Returns (result, mode_counter, c13, e13, c14, e14)."""
+    with open(filename) as f:
+        t1      = f.readline().rstrip()
+        t2      = f.readline().rstrip()
+        section = f.readline().rstrip()
+        f.readline()   # skip '---'
+
+        gfx.cls(BLACK)
+        _draw_header(t1, t2, section)
+        _draw_rsvp_pinpoint()
+
+        for word, mult in _tokenize_body(f):
+            base_ms  = 60000 // _current_wpm()
+            total_ms = int(base_ms * (1.0 + mult))
+
+            gfx.wait_vblank()
+            # Clear only the 16 px word row, leaving header and pinpoints intact.
+            for yy in range(RSVP_WORD_Y, RSVP_WORD_Y + 16):
+                gfx.hline(yy, 0, 255, BLACK)
+            if word:
+                orp    = _orp_index(len(word))
+                word_x = RSVP_ORP_X - orp * 16
+                for i, ch in enumerate(word):
+                    bg = COLOUR6 if i == orp else BLACK
+                    gfx.print_string_2x(word_x + i * 16, RSVP_WORD_Y, ch, bg, WHITE)
+            # Refresh header so the clock stays live, and re-stroke the pinpoints
+            # in case _draw_header painted over the rows they occupy.
+            _draw_header(t1, t2, section)
+            _draw_rsvp_pinpoint()
+
+            deadline = time.ticks_add(time.ticks_ms(), total_ms)
+            while time.ticks_diff(deadline, time.ticks_ms()) > 0:
+                active, mode_counter = check_pin_stable(pin, mode_expected, mode_counter)
+                if not active:
+                    return 'MODE', mode_counter, c13, e13, c14, e14
+                swap, c13, e13, c14, e14 = _check_detail_swap(p13, c13, e13, p14, c14, e14)
+                if swap:
+                    gfx.cls(BLACK)
+                    return 'SWAP', mode_counter, c13, e13, c14, e14
+                time.sleep_ms(5)
+
+    # End-of-article: same inter-article pause as scroll mode.
+    deadline = time.ticks_add(time.ticks_ms(), HOLD_AFTER_MS)
+    while time.ticks_diff(deadline, time.ticks_ms()) > 0:
+        active, mode_counter = check_pin_stable(pin, mode_expected, mode_counter)
+        if not active:
+            return 'MODE', mode_counter, c13, e13, c14, e14
+        swap, c13, e13, c14, e14 = _check_detail_swap(p13, c13, e13, p14, c14, e14)
+        if swap:
+            gfx.cls(BLACK)
+            return 'SWAP', mode_counter, c13, e13, c14, e14
+        time.sleep_ms(10)
+    return None, mode_counter, c13, e13, c14, e14
 
 # Entry point
 def run(pin=None):
@@ -549,8 +703,10 @@ def run(pin=None):
     gfx.set_border(0)
     gfx.cls(BLACK)
 
-    # GPIO 13: detail switch - low/down = summary, high/up = full news
-    detail_pin = _Pin(13, _Pin.IN, _Pin.PULL_UP)
+    # GPIO 13 + 14: 3-position detail switch.
+    # Pos 1 both high = RSVP, pos 2 GPIO13 low = summary, pos 3 GPIO14 low = full.
+    p13 = _Pin(13, _Pin.IN, _Pin.PULL_UP)
+    p14 = _Pin(14, _Pin.IN, _Pin.PULL_UP)
 
     wlan = connect_wifi()
     if wlan is None:
@@ -571,9 +727,12 @@ def run(pin=None):
         last_fetch_ts = 0
 
     mode_expected = 0
-    mode_counter = 0
-    detail_expected = 0   # 0 = summary (pin low/down), 1 = full news (pin high/up)
-    detail_counter = 0
+    mode_counter  = 0
+    # Initial detail pin state: read from actual pins so no spurious SWAP fires at boot.
+    e13 = p13.value()
+    e14 = p14.value()
+    c13 = 0
+    c14 = 0
 
     while True:
         active, mode_counter = check_pin_stable(pin, mode_expected, mode_counter)
@@ -591,10 +750,8 @@ def run(pin=None):
                 active, mode_counter = check_pin_stable(pin, mode_expected, mode_counter)
                 if not active:
                     return
-                active, detail_counter = check_pin_stable(detail_pin, detail_expected, detail_counter)
-                if not active:
-                    detail_expected = detail_pin.value()
-                    detail_counter = 0
+                swap, c13, e13, c14, e14 = _check_detail_swap(p13, c13, e13, p14, c14, e14)
+                if swap:
                     escaped = True
                     break
                 time.sleep_ms(10)
@@ -613,9 +770,8 @@ def run(pin=None):
                 active, mode_counter = check_pin_stable(pin, mode_expected, mode_counter)
                 if not active:
                     return
-                active, detail_counter = check_pin_stable(detail_pin, detail_expected, detail_counter)
-                if not active:
-                    detail_expected = detail_pin.value()
+                swap, c13, e13, c14, e14 = _check_detail_swap(p13, c13, e13, p14, c14, e14)
+                if swap:
                     break
                 time.sleep_ms(10)
             continue
@@ -625,21 +781,26 @@ def run(pin=None):
             active, mode_counter = check_pin_stable(pin, mode_expected, mode_counter)
             if not active:
                 return
-            # Select file based on detail switch: low/down = summary, high/up = full news
+            mode = _detail_mode(e13, e14)
             base = files[idx]
-            if not detail_expected:   # low = summary mode
+            if mode == MODE_RSVP:
+                result, mode_counter, c13, e13, c14, e14 = _show_article_rsvp(
+                    base, pin, mode_counter, mode_expected,
+                    p13, c13, e13, p14, c14, e14)
+            elif mode == MODE_SUMMARY:
                 spath = base[:-4] + '_sum.txt'
                 try:
                     os.stat(spath)
                     show_file = spath
                 except OSError:
                     show_file = base   # fall back to full if no summary cached
-            else:
-                show_file = base       # high = full news mode
-            hold = HOLD_SUM_MS if show_file != base else HOLD_MS
-            result, mode_counter, detail_counter, detail_expected = _show_article(
-                show_file, pin, mode_counter, mode_expected, detail_pin,
-                detail_counter, detail_expected, hold)
+                result, mode_counter, c13, e13, c14, e14 = _show_article(
+                    show_file, pin, mode_counter, mode_expected,
+                    p13, c13, e13, p14, c14, e14, HOLD_SUM_MS)
+            else:   # MODE_FULL
+                result, mode_counter, c13, e13, c14, e14 = _show_article(
+                    base, pin, mode_counter, mode_expected,
+                    p13, c13, e13, p14, c14, e14, HOLD_MS)
             if result == 'MODE':
                 return
             elif result == 'SWAP':
