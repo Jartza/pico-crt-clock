@@ -584,7 +584,7 @@ def run(pin=None):
         files = _list_files()
 
         if not files or now - last_fetch_ts >= NEWS_INTERVAL:
-            draw_banner("Fetching news (black screen)")
+            draw_banner("News fetch (black screen)")
             deadline = time.ticks_add(time.ticks_ms(), 4000)
             escaped = False
             while time.ticks_diff(deadline, time.ticks_ms()) > 0:

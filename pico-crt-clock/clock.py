@@ -1,11 +1,16 @@
 import urequests
 import json
 import gc
+import os
 try:
     from config_local import *
 except ImportError:
     from config import *
 from common import *
+
+WEATHER_DIR          = 'weathercache'
+WEATHER_DAILY_CACHE  = WEATHER_DIR + '/weather_d.json'
+WEATHER_HOURLY_CACHE = WEATHER_DIR + '/weather_h.json'
 
 with open('icons.bin', 'rb') as _f:
     _icons = _f.read()
@@ -110,48 +115,92 @@ def _day_icons(wmo_code, sunshine_s, daylight_s, precip_sum_mm, precip_prob):
 
     return sky_ic, prc_ic
 
-def fetch_weather():
-    reconnect_wifi(wlan)
-    draw_banner("Fetching weather...")
-    base = "https://api.open-meteo.com/v1/forecast?latitude={}&longitude={}&timezone=auto".format(
-        LATITUDE, LONGITUDE)
-    tunit = "fahrenheit" if TEMP_UNIT == "F" else "celsius"
+def _stream_get(url, filename):
+    """Stream HTTP GET to a file in 512-byte chunks so the full response
+    body is never held in RAM."""
+    r = None
     try:
-        r = None
-        try:
-            r = urequests.get(
-                base + "&current=weather_code,wind_speed_10m"
-                       "&daily=weather_code,temperature_2m_max,sunshine_duration"
-                       ",daylight_duration,precipitation_sum,precipitation_probability_mean"
-                       "&forecast_days=7&temperature_unit={}&wind_speed_unit={}".format(tunit, WIND_UNIT),
-                timeout=30)
-            data = json.loads(r.content)
-        finally:
-            if r is not None:
-                try:
-                    r.close()
-                except Exception:
-                    pass
-                r = None
-        gc.collect()
+        r = urequests.get(url, timeout=30)
+        with open(filename, 'wb') as f:
+            while True:
+                chunk = r.raw.read(512)
+                if not chunk:
+                    break
+                f.write(chunk)
+    finally:
+        if r is not None:
+            try:
+                r.close()
+            except Exception:
+                pass
 
-        try:
-            r = urequests.get(
-                base + "&hourly=temperature_2m&forecast_days=1&temperature_unit={}".format(tunit),
-                timeout=30)
-            hourly = json.loads(r.content)
-        finally:
-            if r is not None:
-                try:
-                    r.close()
-                except Exception:
-                    pass
-                r = None
+def _load_cached_weather():
+    """Parse cached weather files into a merged dict. Returns None on failure."""
+    try:
+        with open(WEATHER_DAILY_CACHE) as f:
+            data = json.load(f)
+        gc.collect()
+        with open(WEATHER_HOURLY_CACHE) as f:
+            hourly = json.load(f)
         data['hourly'] = hourly['hourly']
         del hourly
         gc.collect()
         return data
     except Exception:
+        return None
+
+def _cache_age():
+    """Return age of weather cache in seconds, or None if cache is missing."""
+    try:
+        t1 = os.stat(WEATHER_DAILY_CACHE)[8]
+        t2 = os.stat(WEATHER_HOURLY_CACHE)[8]
+        return time.time() - min(t1, t2)
+    except OSError:
+        return None
+
+def _fetch_escape_wait(pin):
+    """Show the fetching banner and wait ~4 s, polling the mode pin.
+    Lets the user bail out before flash writes begin if they're flicking
+    the mode switch past the clock position. Returns True if the pin
+    flipped away (caller should skip the fetch)."""
+    draw_banner("Weather fetch (black screen)")
+    deadline = time.ticks_add(time.ticks_ms(), 4000)
+    counter = 0
+    while time.ticks_diff(deadline, time.ticks_ms()) > 0:
+        active, counter = check_pin_stable(pin, 0, counter)
+        if not active:
+            return True
+        time.sleep_ms(10)
+    return False
+
+def fetch_weather():
+    reconnect_wifi(wlan)
+    base = "https://api.open-meteo.com/v1/forecast?latitude={}&longitude={}&timezone=auto".format(
+        LATITUDE, LONGITUDE)
+    tunit = "fahrenheit" if TEMP_UNIT == "F" else "celsius"
+    # Flash writes glitch the composite signal; park core1 while we write cache.
+    gc.collect()
+    gfx.deinit()
+    try:
+        try:
+            os.mkdir(WEATHER_DIR)
+        except OSError:
+            pass
+        _stream_get(
+            base + "&current=weather_code,wind_speed_10m"
+                   "&daily=weather_code,temperature_2m_max,sunshine_duration"
+                   ",daylight_duration,precipitation_sum,precipitation_probability_mean"
+                   "&forecast_days=7&temperature_unit={}&wind_speed_unit={}".format(tunit, WIND_UNIT),
+            WEATHER_DAILY_CACHE)
+        gc.collect()
+        _stream_get(
+            base + "&hourly=temperature_2m&forecast_days=1&temperature_unit={}".format(tunit),
+            WEATHER_HOURLY_CACHE)
+        gc.collect()
+        gfx.init()
+        return _load_cached_weather()
+    except Exception:
+        gfx.init()
         return None
 
 def parse_weather(data, start_day=0):
@@ -236,7 +285,19 @@ def run(pin=None):
     _boot_lt = time.localtime(_boot_t + _utc_offset(_boot_t))
     _boot_h  = _boot_lt[3]
     _boot_day = _boot_lt[2]
-    _raw = fetch_weather()
+
+    # Reuse flash-cached weather if it's still within WEATHER_INTERVAL old;
+    # otherwise fetch from the network. Mode switches re-enter run() often,
+    # so without this the weather API would be hit every time.
+    _age = _cache_age()
+    if _age is not None and _age < WEATHER_INTERVAL:
+        _raw = _load_cached_weather()
+        last_weather_ts = time.time() - int(_age)
+    else:
+        if _fetch_escape_wait(pin):
+            return
+        _raw = fetch_weather()
+        last_weather_ts = time.time()
     ct, ws, days = parse_weather(_raw, 1 if FORECAST_NEXT_DAY_HOUR > 0 and _boot_h >= FORECAST_NEXT_DAY_HOUR else 0)
     if days:
         cur_temp   = ct
@@ -246,7 +307,6 @@ def run(pin=None):
     _store_hourly(_raw)
     del _raw
     gc.collect()
-    last_weather_ts = time.time()
 
     last_sec       = -1
     last_day       = _boot_day
@@ -285,6 +345,8 @@ def run(pin=None):
         start_day = 1 if FORECAST_NEXT_DAY_HOUR > 0 and h >= FORECAST_NEXT_DAY_HOUR else 0
         _wi = 30 if cur_temp is None else WEATHER_INTERVAL
         if now - last_weather_ts >= _wi or start_day != last_start_day:
+            if _fetch_escape_wait(pin):
+                break
             _raw = fetch_weather()
             ct, ws, days = parse_weather(_raw, start_day)
             if days:            # keep old data on failure
