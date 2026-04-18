@@ -163,7 +163,8 @@ def _fetch_escape_wait(pin):
     Lets the user bail out before flash writes begin if they're flicking
     the mode switch past the clock position. Returns True if the pin
     flipped away (caller should skip the fetch)."""
-    draw_banner("Weather fetch (black screen)")
+    draw_banner("Weather fetch (no signal)" if DEINIT_GFX_DURING_FETCH
+                else "Weather fetch (glitches)")
     deadline = time.ticks_add(time.ticks_ms(), 4000)
     counter = 0
     while time.ticks_diff(deadline, time.ticks_ms()) > 0:
@@ -180,7 +181,8 @@ def fetch_weather():
     tunit = "fahrenheit" if TEMP_UNIT == "F" else "celsius"
     # Flash writes glitch the composite signal; park core1 while we write cache.
     gc.collect()
-    gfx.deinit()
+    if DEINIT_GFX_DURING_FETCH:
+        gfx.deinit()
     try:
         try:
             os.mkdir(WEATHER_DIR)
@@ -197,10 +199,12 @@ def fetch_weather():
             base + "&hourly=temperature_2m&forecast_days=1&temperature_unit={}".format(tunit),
             WEATHER_HOURLY_CACHE)
         gc.collect()
-        gfx.init()
+        if DEINIT_GFX_DURING_FETCH:
+            gfx.init()
         return _load_cached_weather()
     except Exception:
-        gfx.init()
+        if DEINIT_GFX_DURING_FETCH:
+            gfx.init()
         return None
 
 def parse_weather(data, start_day=0):

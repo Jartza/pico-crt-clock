@@ -414,11 +414,12 @@ def init():
     _ensure_init()
 
 def deinit():
-    global _screen, _surface
-    if _screen:
-        pygame.quit()
-        _screen  = None
-        _surface = None
+    # Simulator has no flash-write glitches to hide, but mirror the device's
+    # "no signal" black screen so the user sees that something is happening.
+    # Do NOT pygame.quit() here - it would destroy the window mid-run.
+    if _surface:
+        _surface.fill(PALETTE[0])
+        _present()
 
 def cls(colour):
     # Mirror hardware behaviour: cls() waits for vblank before clearing.

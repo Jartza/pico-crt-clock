@@ -344,7 +344,8 @@ def _fetch_and_store():
     Returns number of articles stored, 0 on failure."""
     reconnect_wifi(wlan)
     gc.collect()
-    gfx.deinit()
+    if DEINIT_GFX_DURING_FETCH:
+        gfx.deinit()
     try:
         sections = [s.strip() for s in NEWS_SECTIONS.split(',') if s.strip()]
 
@@ -430,10 +431,12 @@ def _fetch_and_store():
                 count += 1
                 del headline, tlines
                 gc.collect()
-        gfx.init()
+        if DEINIT_GFX_DURING_FETCH:
+            gfx.init()
         return count
     except Exception as e:
-        gfx.init()
+        if DEINIT_GFX_DURING_FETCH:
+            gfx.init()
         # no traceback on Pico
         print("news fetch error: {}: {}".format(type(e).__name__, e))
         return 0
@@ -743,7 +746,8 @@ def run(pin=None):
         files = _list_files()
 
         if not files or now - last_fetch_ts >= NEWS_INTERVAL:
-            draw_banner("News fetch (black screen)")
+            draw_banner("News fetch (no signal)" if DEINIT_GFX_DURING_FETCH
+                        else "News fetch (glitches)")
             deadline = time.ticks_add(time.ticks_ms(), 4000)
             escaped = False
             while time.ticks_diff(deadline, time.ticks_ms()) > 0:
