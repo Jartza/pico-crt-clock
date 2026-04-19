@@ -100,8 +100,6 @@ def _load_prices():
 def _fetch_prices():
     reconnect_wifi(wlan)
     gc.collect()
-    if DEINIT_GFX_DURING_FETCH:
-        gfx.deinit()
     try:
         try:
             os.mkdir(ELEC_DIR)
@@ -120,18 +118,13 @@ def _fetch_prices():
             start_iso, end_iso)
         stream_get(url, PRICE_CACHE)
         gc.collect()
-        if DEINIT_GFX_DURING_FETCH:
-            gfx.init()
         return _load_prices()
     except Exception:
-        if DEINIT_GFX_DURING_FETCH:
-            gfx.init()
         return None
 
 
 def _fetch_escape_wait(pin):
-    draw_banner("Elec fetch (no signal)" if DEINIT_GFX_DURING_FETCH
-                else "Elec fetch (glitches)")
+    draw_banner("Fetching SPOT prices...")
     deadline = time.ticks_add(time.ticks_ms(), 4000)
     counter  = 0
     while time.ticks_diff(deadline, time.ticks_ms()) > 0:

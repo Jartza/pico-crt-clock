@@ -85,12 +85,6 @@ SCREENSAVER_SPEED = 2
 # configured values above.
 USE_ADC_SPEED = False
 
-# Set to True to pause the video signal during news/weather fetching.  This
-# hides flash-write glitches behind a steady "no signal" image, but the screen
-# goes blank for a few seconds.  Set to False to keep the picture live during
-# fetch (you will see brief glitches whenever cache files are written).
-DEINIT_GFX_DURING_FETCH = True
-
 # Apps available on this device, in switch-position order.
 # Each entry is a tuple: (module_name, gpio) or (module_name, gpio, extras_dict).
 # Pull a GPIO to GND via your mode-select switch to activate that app.  If no

@@ -55,14 +55,19 @@ def _utc_offset(utc_ts):
     )
     return base + 3600 if summer else base
 
-def draw_banner(text):
+def draw_banner(text, subtext=None):
     """Draw a centred status banner: black filled box + white border + text.
     Overlays on the current frame without clearing the screen."""
-    tw  = len(text) * 8
-    tx  = (256 - tw) // 2
-    ty  = 92                        # vertically centred on 192 px screen
-    bx0 = tx - 4;  bx1 = tx + tw + 3
-    by0 = ty - 4;  by1 = ty + 11
+    tw = len(text) * 8
+    sw = len(subtext) * 8 if subtext else 0
+    bw = max(tw, sw)
+    tx = (256 - tw) // 2
+    sx = (256 - sw) // 2 if subtext else 0
+    ty = 87 if subtext else 92
+    by1 = ty + (21 if subtext else 11)
+    bx0 = (256 - bw) // 2 - 4
+    bx1 = bx0 + bw + 7
+    by0 = ty - 4
     for y in range(by0, by1 + 1):  # black fill
         gfx.line(bx0, y, bx1, y, BLACK)
     gfx.line(bx0 - 1, by0 - 1, bx1 + 1, by0 - 1, WHITE)   # top
@@ -70,6 +75,8 @@ def draw_banner(text):
     gfx.line(bx0 - 1, by0 - 1, bx0 - 1, by1 + 1, WHITE)   # left
     gfx.line(bx1 + 1, by0 - 1, bx1 + 1, by1 + 1, WHITE)   # right
     gfx.print_string(tx, ty, text, BLACK, WHITE)
+    if subtext:
+        gfx.print_string(sx, ty + 10, subtext, BLACK, WHITE)
 
 def connect_wifi():
     """Connect to WiFi, return wlan object or None on timeout.

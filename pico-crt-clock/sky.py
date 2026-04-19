@@ -185,8 +185,6 @@ def _cache_age():
 def _fetch_kp():
     reconnect_wifi(wlan)
     gc.collect()
-    if DEINIT_GFX_DURING_FETCH:
-        gfx.deinit()
     try:
         try:
             os.mkdir(SKY_DIR)
@@ -196,19 +194,14 @@ def _fetch_kp():
             "https://services.swpc.noaa.gov/products/noaa-planetary-k-index-forecast.json",
             KP_CACHE)
         gc.collect()
-        if DEINIT_GFX_DURING_FETCH:
-            gfx.init()
         return _load_kp()
     except Exception:
-        if DEINIT_GFX_DURING_FETCH:
-            gfx.init()
         return None
 
 
 def _fetch_escape_wait(pin):
     """Let the user bail out before a fetch starts (mirrors weather.py behaviour)."""
-    draw_banner("Sky fetch (no signal)" if DEINIT_GFX_DURING_FETCH
-                else "Sky fetch (glitches)")
+    draw_banner("Fetching Auroras...")
     deadline = time.ticks_add(time.ticks_ms(), 4000)
     counter  = 0
     while time.ticks_diff(deadline, time.ticks_ms()) > 0:
