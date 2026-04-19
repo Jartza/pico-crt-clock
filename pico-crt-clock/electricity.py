@@ -20,10 +20,15 @@ DATE_Y    = 24           # date row (1x)
 CHART_Y   = 40           # chart top
 CHART_H   = 116          # chart body height (pixels)
 BAR_W     = 9            # px per bar; 24 * 9 = 216 - fits inside 224 safe width
-CHART_X0  = SAFE_X + (224 - 24 * BAR_W) // 2   # centre chart inside safe area
+CHART_W   = 24 * BAR_W
+CHART_X0  = SAFE_X + (224 - CHART_W) // 2   # centre chart inside safe area
 FOOTER_Y  = 160          # first footer row
 SS_OX_MAX = 16
 SS_OY_MAX = 8
+CHART_TILE_W = 35
+CHART_TILE_H = CHART_H
+CHART_TILE_WIDTHS = (35, 35, 35, 35, 35, 35, 6)
+CHART_TILE_COUNT = len(CHART_TILE_WIDTHS)
 
 # Greyscale shades for bar tiers: cheap / mid / expensive.
 COL_CHEAP     = 5
@@ -33,6 +38,10 @@ COL_GRID      = 6
 COL_NOW       = 15
 
 wlan = None
+# Reuse tiled chart buffers because RP2040 gfx.blit() only cares that
+# sw*sh stays within the 4 kB native blit buffer, and the MicroPython build
+# runs with tight heap margins.
+_chart_tiles = tuple(bytearray(w * CHART_TILE_H) for w in CHART_TILE_WIDTHS)
 
 
 def _iso_z(epoch):
@@ -134,18 +143,48 @@ def _tier_colour(price):
     return COL_MID
 
 
-def _draw_chart(ox, oy, prices, cur_hour):
-    """Draw a 24-bar chart of today's hourly prices."""
-    if not prices:
-        msg = "no price data"
-        x   = SAFE_X + (224 - len(msg) * 8) // 2 + ox
-        gfx.print_string(x, CHART_Y + CHART_H // 2 - 4 + oy,
-                         msg, BLACK, COL_GRID)
-        return 0.0, 0.0, None
+def _fill_rect(tiles, x0, y0, x1, y1, colour):
+    if x0 < 0:
+        x0 = 0
+    if y0 < 0:
+        y0 = 0
+    if x1 >= CHART_W:
+        x1 = CHART_W - 1
+    if y1 >= CHART_H:
+        y1 = CHART_H - 1
+    if x0 > x1 or y0 > y1:
+        return
+    for y in range(y0, y1 + 1):
+        tile_y = y
+        for x in range(x0, x1 + 1):
+            tile_col = x // CHART_TILE_W
+            tile_x0  = tile_col * CHART_TILE_W
+            tile_x   = x - tile_x0
+            tile_w   = CHART_TILE_WIDTHS[tile_col]
+            tile     = tiles[tile_col]
+            tile[tile_y * tile_w + tile_x] = colour
 
-    vals  = list(prices.values())
-    max_p = max(vals)
-    min_p = min(vals)
+
+def _build_chart_cache(prices, cur_hour, chart_tiles):
+    """Build the chart sprite once per hour/day and blit it on redraw."""
+    for ti in range(CHART_TILE_COUNT):
+        tile = chart_tiles[ti]
+        for i in range(CHART_TILE_WIDTHS[ti] * CHART_TILE_H):
+            tile[i] = BLACK
+    if not prices:
+        return {
+            'min_p': 0.0,
+            'max_p': 0.0,
+            'cur_p': None,
+        }
+
+    min_p = None
+    max_p = None
+    for price in prices.values():
+        if min_p is None or price < min_p:
+            min_p = price
+        if max_p is None or price > max_p:
+            max_p = price
 
     # Scale: the top of the chart = max of (today's peak, expensive threshold)
     # with 10% headroom.  This keeps both threshold rule lines visible inside
@@ -153,37 +192,44 @@ def _draw_chart(ox, oy, prices, cur_hour):
     # without squishing the thresholds against the top edge.
     scale_max = max(max_p, ELEC_EXPENSIVE_CKWH) * 1.1
 
-    chart_right = CHART_X0 + 24 * BAR_W
-    chart_bot   = CHART_Y + CHART_H
-
     def _y_for(price):
-        return chart_bot - int((price / scale_max) * CHART_H) + oy
+        return CHART_H - int((price / scale_max) * CHART_H)
 
     if ELEC_DRAW_THRESHOLDS:
-        gfx.hline(_y_for(ELEC_CHEAP_CKWH),
-                  CHART_X0 + ox, chart_right - 1 + ox, COL_GRID)
-        gfx.hline(_y_for(ELEC_EXPENSIVE_CKWH),
-                  CHART_X0 + ox, chart_right - 1 + ox, COL_GRID)
+        y = _y_for(ELEC_CHEAP_CKWH)
+        _fill_rect(chart_tiles, 0, y, CHART_W - 1, y, COL_GRID)
+        y = _y_for(ELEC_EXPENSIVE_CKWH)
+        _fill_rect(chart_tiles, 0, y, CHART_W - 1, y, COL_GRID)
 
     for h in range(24):
         price = prices.get(h)
         if price is None:
             continue
         top_y = _y_for(price)
-        x0    = CHART_X0 + h * BAR_W + ox
+        x0    = h * BAR_W
         x1    = x0 + BAR_W - 2
         col   = _tier_colour(price)
-        for yy in range(top_y, chart_bot + oy):
-            gfx.hline(yy, x0, x1, col)
+        _fill_rect(chart_tiles, x0, top_y, x1, CHART_H - 1, col)
 
     # Current-hour marker: small vertical line right above the bar top so
     # it's obvious which hour is "now" regardless of the bar's tier colour.
     if 0 <= cur_hour < 24 and cur_hour in prices:
         top_y = _y_for(prices[cur_hour])
-        mx    = CHART_X0 + cur_hour * BAR_W + (BAR_W - 2) // 2 + ox
-        gfx.line(mx, top_y - 6, mx, top_y - 2, COL_NOW)
+        mx    = cur_hour * BAR_W + (BAR_W - 2) // 2
+        _fill_rect(chart_tiles, mx, top_y - 6, mx, top_y - 2, COL_NOW)
 
-    return min_p, max_p, prices.get(cur_hour)
+    # Tiny vertical ticks at the bottom, between the bars, every 3 hours
+    # to help visually find the correct hour.
+    for h in range(3, 24, 3):
+        x = h * BAR_W + (BAR_W - 2) // 2 - 4
+        _fill_rect(chart_tiles, x, CHART_H - 4, x, CHART_H, WHITE)
+
+    gc.collect()
+    return {
+        'min_p': min_p,
+        'max_p': max_p,
+        'cur_p': prices.get(cur_hour),
+    }
 
 
 def _cheapest_upcoming(prices, cur_hour):
@@ -193,14 +239,31 @@ def _cheapest_upcoming(prices, cur_hour):
     return min(remaining, key=lambda x: x[1])
 
 
-def _draw_all(ox, oy, t_str, d_str, prices, cur_hour):
+def _draw_all(ox, oy, t_str, d_str, prices, cur_hour, chart_state):
     gfx.cls(BLACK)
     gfx.print_string_2x((256 - len(t_str) * 16) // 2 + ox, TIME_Y + oy,
                         t_str, BLACK, WHITE)
     gfx.print_string((256 - len(d_str) * 8) // 2 + ox, DATE_Y + oy,
                      d_str, BLACK, WHITE)
 
-    min_p, max_p, cur_p = _draw_chart(ox, oy, prices, cur_hour)
+    if prices:
+        dx = CHART_X0 + ox
+        for tile_col in range(CHART_TILE_COUNT):
+            tile_w = CHART_TILE_WIDTHS[tile_col]
+            tile = chart_state['chart_tiles'][tile_col]
+            gfx.blit(tile, tile_w, CHART_TILE_H, dx, CHART_Y + oy)
+            dx += tile_w
+        min_p = chart_state['min_p']
+        max_p = chart_state['max_p']
+        cur_p = chart_state['cur_p']
+    else:
+        msg = "no price data"
+        x   = SAFE_X + (224 - len(msg) * 8) // 2 + ox
+        gfx.print_string(x, CHART_Y + CHART_H // 2 - 4 + oy,
+                         msg, BLACK, COL_GRID)
+        min_p = 0.0
+        max_p = 0.0
+        cur_p = None
 
     if prices:
         # Line 1: now / min / max.  28 chars at worst (two-digit values) fits
@@ -224,7 +287,7 @@ def _draw_all(ox, oy, t_str, d_str, prices, cur_hour):
 
 
 def run(pin=None):
-    global wlan
+    global wlan, _chart_tiles
 
     gfx.init()
     gfx.set_border(0)
@@ -250,6 +313,7 @@ def run(pin=None):
         if _fetch_escape_wait(pin):
             return
         prices = _fetch_prices()
+    gc.collect()
 
     ox, oy   = 0, 0
     vx, vy   = 1, 1
@@ -257,6 +321,8 @@ def run(pin=None):
     last_hr  = -1
     last_mv  = time.ticks_ms()
     pincnt   = 0
+    chart_key = None
+    chart_state = None
 
     while True:
         active, pincnt = check_pin_stable(pin, 0, pincnt)
@@ -267,6 +333,16 @@ def run(pin=None):
         t   = time.localtime(now + _utc_offset(now))
         yr, mo, dy = t[0], t[1], t[2]
         hr, mi, se = t[3], t[4], t[5]
+        new_chart_key = (yr, mo, dy, hr)
+        if chart_state is None or new_chart_key != chart_key:
+            chart_key = new_chart_key
+            chart_meta = _build_chart_cache(prices, hr, _chart_tiles)
+            chart_state = {
+                'chart_tiles': _chart_tiles,
+                'min_p': chart_meta['min_p'],
+                'max_p': chart_meta['max_p'],
+                'cur_p': chart_meta['cur_p'],
+            }
 
         if se != last_s:
             last_s = se
@@ -278,7 +354,7 @@ def run(pin=None):
                 t_str = "{:02d}:{:02d}:{:02d}".format(hr, mi, se)
             dp = {'D': str(dy), 'M': str(mo), 'Y': str(yr)}
             d_str = DATE_SEP.join(dp[c] for c in DATE_ORDER)
-            _draw_all(ox, oy, t_str, d_str, prices, hr)
+            _draw_all(ox, oy, t_str, d_str, prices, hr, chart_state)
 
         ss_speed = (read_speed_adc() >> 3) if USE_ADC_SPEED else SCREENSAVER_SPEED
         if ss_speed < 999 and time.ticks_diff(time.ticks_ms(), last_mv) >= (ss_speed * 50):
@@ -301,12 +377,15 @@ def run(pin=None):
                 fresh = _load_prices()
                 if fresh and hr in fresh:
                     prices = fresh
+                    gc.collect()
                 else:
                     if _fetch_escape_wait(pin):
                         return
                     new_prices = _fetch_prices()
                     if new_prices:
                         prices = new_prices
+                        gc.collect()
+                chart_key = None
                 last_s = -1
 
         time.sleep_ms(10)

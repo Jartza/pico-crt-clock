@@ -38,6 +38,10 @@ PHASE_NAMES = (
 )
 
 wlan = None
+# Reuse the moon sprite buffer and cache day-level astronomy values because the
+# RP2040 MicroPython build uses single-precision floats and runs with tight
+# heap and frame-time margins.
+_moon_buf = bytearray((MOON_R * 2 + 1) * (MOON_R * 2 + 1))
 
 
 def _julian_day(y, mo, d):
@@ -50,21 +54,46 @@ def _julian_day(y, mo, d):
     return int(365.25 * (y + 4716)) + int(30.6001 * (mo + 1)) + d + b - 1524.5
 
 
+def _is_leap_year(y):
+    return y % 4 == 0 and (y % 100 != 0 or y % 400 == 0)
+
+
+def _day_of_year(y, mo, d):
+    mdays = (31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31)
+    doy = d
+    for i in range(mo - 1):
+        doy += mdays[i]
+    if mo > 2 and _is_leap_year(y):
+        doy += 1
+    return doy
+
+
+def _days_since_2000(y, mo, d):
+    """Days since 2000-01-01 00:00 UTC, using integer arithmetic only.
+    Keeping the epoch near the present avoids precision loss on RP2040
+    MicroPython, which uses single-precision floats."""
+    y1 = y - 1
+    days_before_year = y1 * 365 + y1 // 4 - y1 // 100 + y1 // 400
+    days_before_2000 = 1999 * 365 + 1999 // 4 - 1999 // 100 + 1999 // 400
+    return (days_before_year + _day_of_year(y, mo, d) - 1) - days_before_2000
+
+
 def _sun_rise_set(y, mo, d, lat_deg, lon_deg):
     """Standard NOAA/Meeus sunrise equation.  Returns (rise_min, set_min) as
     minutes past UTC midnight, ('up','up') for polar day, or (None, None) for
     polar night.  Accurate to about 1 min in temperate latitudes."""
-    # The equation expects JD at noon of the target day (astronomical convention).
-    # _julian_day gives midnight, so add 0.5.
-    jd_noon = _julian_day(y, mo, d) + 0.5
-    n       = jd_noon - 2451545.0 + 0.0008
+    # Use a reduced epoch close to the present instead of full Julian dates.
+    # RP2040 MicroPython uses single-precision floats, and numbers near
+    # 2_451_545 lose enough precision to flatten sunrise/sunset badly.
+    d2000   = _days_since_2000(y, mo, d)
+    n       = d2000 + 0.0008
     j_star  = n - lon_deg / 360.0
     mean_m  = math.radians((357.5291 + 0.98560028 * j_star) % 360)
     eq_ctr  = (1.9148 * math.sin(mean_m)
                + 0.0200 * math.sin(2 * mean_m)
                + 0.0003 * math.sin(3 * mean_m))
     lam     = math.radians((math.degrees(mean_m) + eq_ctr + 180 + 102.9372) % 360)
-    j_tran  = (2451545.0 + j_star
+    j_tran  = (j_star
                + 0.0053 * math.sin(mean_m)
                - 0.0069 * math.sin(2 * lam))
     sin_dec = math.sin(lam) * math.sin(math.radians(23.44))
@@ -82,14 +111,14 @@ def _sun_rise_set(y, mo, d, lat_deg, lon_deg):
     j_rise = j_tran - h_deg / 360.0
     j_set  = j_tran + h_deg / 360.0
     def _mins(j):
-        return int(((j - 0.5) % 1) * 24 * 60 + 0.5)
+        return int(((j + 0.5 - d2000) % 1) * 24 * 60 + 0.5)
     return _mins(j_rise), _mins(j_set)
 
 
 def _moon_age(y, mo, d):
     """Days since last new moon.  Epoch: 2000-01-06 18:14 UTC (JD 2451550.26),
     rounded to the Meeus-referenced value 2451550.1."""
-    return (_julian_day(y, mo, d) - 2451550.1) % SYN_MONTH
+    return (_days_since_2000(y, mo, d) - 5.6) % SYN_MONTH
 
 
 def _moon_illumination(age):
@@ -190,16 +219,24 @@ def _fetch_escape_wait(pin):
     return False
 
 
-def _draw_moon(cx, cy, r, age):
-    """Paint a filled greyscale moon showing the illuminated fraction.
-    Dark side = MOON_DARK (dim grey, like earthshine); lit side = WHITE.
-    A WHITE circle outline keeps the disc shape visible even when dark."""
+def _draw_moon(cx, cy, r, moon_buf):
+    """Blit a cached moon disc and draw the outline on top."""
+    gfx.blit(moon_buf, r * 2 + 1, r * 2 + 1, cx - r, cy - r)
+    gfx.circle(cx, cy, r, WHITE, False)
+
+
+def _moon_bitmap(age, r, buf):
+    """Fill a cached greyscale moon disc for blitting."""
     fraction    = age / SYN_MONTH           # 0..1
     phase_angle = 2 * math.pi * fraction    # 0 new, pi full, 2pi back to new
     k           = math.cos(phase_angle)     # +1 new, -1 full
     waxing      = fraction < 0.5
+    size        = r * 2 + 1
+    for i in range(size * size):
+        buf[i] = BLACK
     r2          = r * r
     for py in range(-r, r + 1):
+        row_y = py + r
         row_half = int((r2 - py * py) ** 0.5)
         if row_half <= 0:
             continue
@@ -207,18 +244,26 @@ def _draw_moon(cx, cy, r, age):
         if bound > row_half:  bound = row_half
         if bound < -row_half: bound = -row_half
         if waxing:
-            # Lit on right (px > bound), dark on left.
-            if bound > -row_half:
-                gfx.hline(cy + py, cx - row_half, cx + bound,       MOON_DARK)
-            if bound < row_half:
-                gfx.hline(cy + py, cx + bound + 1, cx + row_half,   WHITE)
+            dark_x0 = -row_half
+            dark_x1 = bound
+            lit_x0  = bound + 1
+            lit_x1  = row_half
         else:
-            # Lit on left (px < -bound), dark on right.
-            if bound < row_half:
-                gfx.hline(cy + py, cx + bound + 1, cx + row_half,   MOON_DARK)
-            if bound > -row_half:
-                gfx.hline(cy + py, cx - row_half, cx + bound,       WHITE)
-    gfx.circle(cx, cy, r, WHITE, False)
+            lit_x0  = -row_half
+            lit_x1  = bound
+            dark_x0 = bound + 1
+            dark_x1 = row_half
+        if dark_x0 <= dark_x1:
+            idx = row_y * size + (dark_x0 + r)
+            for _ in range(dark_x0, dark_x1 + 1):
+                buf[idx] = MOON_DARK
+                idx += 1
+        if lit_x0 <= lit_x1:
+            idx = row_y * size + (lit_x0 + r)
+            for _ in range(lit_x0, lit_x1 + 1):
+                buf[idx] = WHITE
+                idx += 1
+    return buf
 
 
 def _draw_kp_bars(x, y, w, h, kp_data):
@@ -241,14 +286,14 @@ def _draw_kp_bars(x, y, w, h, kp_data):
 
 
 def _draw_all(ox, oy, t_str, d_str, rise_str, set_str, dl_str,
-              age, illum_pct, ph_name, kp_data, peak_kp):
+              age, illum_pct, ph_name, moon_buf, kp_data, peak_kp):
     gfx.cls(BLACK)
     gfx.print_string_2x((256 - len(t_str) * 16) // 2 + ox, TIME_Y + oy,
                         t_str, BLACK, WHITE)
     gfx.print_string((256 - len(d_str) * 8) // 2 + ox, DATE_Y + oy,
                      d_str, BLACK, WHITE)
 
-    _draw_moon(MOON_CX + ox, MOON_CY + oy, MOON_R, age)
+    _draw_moon(MOON_CX + ox, MOON_CY + oy, MOON_R, moon_buf)
 
     gfx.print_string(MOON_TX + ox, MOON_CY - 14 + oy, ph_name, BLACK, WHITE)
     gfx.print_string(MOON_TX + ox, MOON_CY -  2 + oy,
@@ -275,8 +320,37 @@ def _draw_all(ox, oy, t_str, d_str, rise_str, set_str, dl_str,
                          BLACK, WHITE)
 
 
+def _peak_kp(kp_data):
+    """MicroPython-safe max helper for kp forecast tuples."""
+    if not kp_data:
+        return None
+    peak = None
+    for _, kp in kp_data:
+        if peak is None or kp > peak:
+            peak = kp
+    return peak
+
+
+def _build_day_cache(yr, mo, dy, kp_data, moon_buf):
+    r_utc, s_utc = _sun_rise_set(yr, mo, dy, LATITUDE, LONGITUDE)
+    age   = _moon_age(yr, mo, dy)
+    illum = int(_moon_illumination(age) * 100 + 0.5)
+    _moon_bitmap(age, MOON_R, moon_buf)
+    gc.collect()
+    return {
+        'rise_str': _fmt_hm(r_utc),
+        'set_str': _fmt_hm(s_utc),
+        'dl_str': _daylight_str(r_utc, s_utc),
+        'age': age,
+        'illum': illum,
+        'ph': _phase_name(age),
+        'peak': _peak_kp(kp_data),
+        'moon_buf': moon_buf,
+    }
+
+
 def run(pin=None):
-    global wlan
+    global wlan, _moon_buf
 
     gfx.init()
     gfx.set_border(0)
@@ -309,6 +383,8 @@ def run(pin=None):
     last_s   = -1
     last_mv  = time.ticks_ms()
     pincnt   = 0
+    day_key  = None
+    day_cache = None
 
     while True:
         active, pincnt = check_pin_stable(pin, 0, pincnt)
@@ -330,19 +406,15 @@ def run(pin=None):
                 t_str = "{:02d}:{:02d}:{:02d}".format(hr, mi, se)
             dp = {'D': str(dy), 'M': str(mo), 'Y': str(yr)}
             d_str = DATE_SEP.join(dp[c] for c in DATE_ORDER)
+            new_day_key = (yr, mo, dy)
+            if day_cache is None or new_day_key != day_key:
+                day_key = new_day_key
+                day_cache = _build_day_cache(yr, mo, dy, kp_data, _moon_buf)
 
-            r_utc, s_utc = _sun_rise_set(yr, mo, dy, LATITUDE, LONGITUDE)
-            rise_str = _fmt_hm(r_utc)
-            set_str  = _fmt_hm(s_utc)
-            dl_str   = _daylight_str(r_utc, s_utc)
-
-            age   = _moon_age(yr, mo, dy)
-            illum = int(_moon_illumination(age) * 100 + 0.5)
-            ph    = _phase_name(age)
-            peak  = max((k for _, k in kp_data), default=None) if kp_data else None
-
-            _draw_all(ox, oy, t_str, d_str, rise_str, set_str, dl_str,
-                      age, illum, ph, kp_data, peak)
+            _draw_all(ox, oy, t_str, d_str,
+                      day_cache['rise_str'], day_cache['set_str'], day_cache['dl_str'],
+                      day_cache['age'], day_cache['illum'], day_cache['ph'], day_cache['moon_buf'],
+                      kp_data, day_cache['peak'])
 
         # Screensaver: gentle DVD bounce so static blocks (moon, sparkline)
         # don't burn into the CRT.
@@ -363,6 +435,8 @@ def run(pin=None):
             new_kp = _fetch_kp()
             if new_kp:
                 kp_data = new_kp
+                if day_cache is not None:
+                    day_cache['peak'] = _peak_kp(kp_data)
             last_fetch_ts = time.time()
             last_s = -1   # force redraw after fetch
 
