@@ -125,11 +125,14 @@ ELEC_AREA             = "fi"
 # True = include VAT + tax + transfer in displayed price; False = raw spot only.
 ELEC_SHOW_TOTAL       = True
 # These only apply when ELEC_SHOW_TOTAL is True.  Set any to 0 to skip it.
-# Note: VAT is applied to (spot + tax + transfer) as a whole, matching Finnish
-# practice - electricity tax and transfer fees are part of the VAT base.
+# Note: VAT is applied to electricity price, but electrcicity tax should
+# be listed with VAT, as well as the margin and transfer fees.
+# In April 2026, Finnish VAT is 25.5%, electricity tax is 2.92 c/kWh (incl VAT),
+# Caruna transfer fee is 5.26 c/kWh (incl VAT)
 ELEC_VAT_PCT          = 25.5
-ELEC_TAX_CKWH         = 2.827
-ELEC_TRANSFER_CKWH    = 5.0
+ELEC_TAX_CKWH         = 2.92
+ELEC_TRANSFER_CKWH    = 5.26
+ELEC_MARGIN_CKWH      = 0.59
 # Threshold values in c/kWh - bars below CHEAP are light grey, above
 # EXPENSIVE are white, in between are mid grey.
 ELEC_CHEAP_CKWH       = 5.0

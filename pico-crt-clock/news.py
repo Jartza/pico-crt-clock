@@ -54,15 +54,27 @@ _MODE_NAME_TO_CONST = {
 def _check_detail_swap(p13, c13, e13, p14, c14, e14):
     """Poll both detail pins. Return (swap, c13, e13, c14, e14) where swap is True
     if either pin has changed to a new stable value. Caller recomputes mode."""
+    swap = False
     if p13 is not None:
         active, c13 = check_pin_stable(p13, e13, c13)
         if not active:
-            return True, 0, p13.value(), c14, e14
+            swap = True
     if p14 is not None:
         active, c14 = check_pin_stable(p14, e14, c14)
         if not active:
-            return True, c13, e13, 0, p14.value()
-    return False, c13, e13, c14, e14
+            swap = True
+    if swap:
+        v13 = p13.value() if p13 is not None else 1
+        v14 = p14.value() if p14 is not None else 1
+        if p14 is not None and v14 == 0:
+            e13, e14 = 1, 0
+        elif p13 is not None and v13 == 0:
+            e13, e14 = 0, 1
+        else:
+            e13, e14 = 1, 1
+        c13 = 0
+        c14 = 0
+    return swap, c13, e13, c14, e14
 
 NEWS_DIR = 'newscache'
 _CHUNK   = 64   # bytes per read when scanning JSON
@@ -717,7 +729,7 @@ def run(pin=None, modes=None):
 
     # Build up to two detail pins from the integer keys of modes, preserving
     # the module's existing p13/p14 plumbing (first detail gpio -> p13, second -> p14).
-    _gpios = [(k, _MODE_NAME_TO_CONST[v]) for k, v in modes.items() if isinstance(k, int)]
+    _gpios = sorted((k, _MODE_NAME_TO_CONST[v]) for k, v in modes.items() if isinstance(k, int))
     p13 = _Pin(_gpios[0][0], _Pin.IN, _Pin.PULL_UP) if len(_gpios) >= 1 else None
     p14 = _Pin(_gpios[1][0], _Pin.IN, _Pin.PULL_UP) if len(_gpios) >= 2 else None
     m13 = _gpios[0][1] if len(_gpios) >= 1 else None
@@ -754,6 +766,12 @@ def run(pin=None, modes=None):
     # None pins report as "high" so they never contribute to mode changes.
     e13 = p13.value() if p13 is not None else 1
     e14 = p14.value() if p14 is not None else 1
+    if p14 is not None and e14 == 0:
+        e13, e14 = 1, 0
+    elif p13 is not None and e13 == 0:
+        e13, e14 = 0, 1
+    else:
+        e13, e14 = 1, 1
     c13 = 0
     c14 = 0
 

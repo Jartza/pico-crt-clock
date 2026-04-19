@@ -57,12 +57,12 @@ def _apply_markup(spot_ckwh):
     is True."""
     if not ELEC_SHOW_TOTAL:
         return spot_ckwh
-    return (spot_ckwh + ELEC_TAX_CKWH + ELEC_TRANSFER_CKWH) * (1 + ELEC_VAT_PCT / 100)
-
+    return (spot_ckwh * (1 + ELEC_VAT_PCT / 100)) + ELEC_TAX_CKWH + ELEC_TRANSFER_CKWH + ELEC_MARGIN_CKWH
 
 def _load_prices():
     """Return dict mapping local-hour-of-day-str -> c/kWh for today, or None
-    on failure.  Keys are 0-23 as ints (local hour index)."""
+    on failure.  Keys are 0-23 as ints (local hour index).
+    If the source provides sub-hour intervals, average them per local hour."""
     try:
         with open(PRICE_CACHE) as f:
             payload = json.load(f)
@@ -75,18 +75,25 @@ def _load_prices():
     off_sec = _utc_offset(now)
     lt      = time.localtime(now + off_sec)
     today_key = (lt[0], lt[1], lt[2])
-    out = {}
+    sums = {}
+    counts = {}
     for row in rows:
         ts = row.get('timestamp')
         if ts is None:
             continue
+        row_off = _utc_offset(ts)
         # API returns seconds since epoch (UTC); shift to local to find hour-of-day.
-        local_ts = ts + off_sec
+        local_ts = ts + row_off
         rt       = time.gmtime(local_ts)
         if (rt[0], rt[1], rt[2]) != today_key:
             continue
         spot_ckwh = float(row.get('price', 0)) / 10.0   # EUR/MWh -> c/kWh
-        out[rt[3]] = _apply_markup(spot_ckwh)
+        hour = rt[3]
+        sums[hour] = sums.get(hour, 0.0) + spot_ckwh
+        counts[hour] = counts.get(hour, 0) + 1
+    out = {}
+    for hour in sums:
+        out[hour] = _apply_markup(sums[hour] / counts[hour])
     return out if out else None
 
 
@@ -232,13 +239,6 @@ def _build_chart_cache(prices, cur_hour, chart_tiles):
     }
 
 
-def _cheapest_upcoming(prices, cur_hour):
-    remaining = [(h, p) for h, p in prices.items() if h >= cur_hour]
-    if not remaining:
-        return None, None
-    return min(remaining, key=lambda x: x[1])
-
-
 def _draw_all(ox, oy, t_str, d_str, prices, cur_hour, chart_state):
     gfx.cls(BLACK)
     gfx.print_string_2x((256 - len(t_str) * 16) // 2 + ox, TIME_Y + oy,
@@ -276,12 +276,9 @@ def _draw_all(ox, oy, t_str, d_str, prices, cur_hour, chart_state):
         gfx.print_string(SAFE_X + ox, FOOTER_Y + oy,
                          "  ".join(bits), BLACK, WHITE)
 
-        # Line 2: area + markup tag + cheapest upcoming slot if known.
+        # Line 2: area + markup tag.
         tag = "all inc" if ELEC_SHOW_TOTAL else "raw spot"
         line2 = "{}  {}  c/kWh".format(ELEC_AREA, tag)
-        ch, cp = _cheapest_upcoming(prices, cur_hour)
-        if ch is not None and ch != cur_hour:
-            line2 += "  cheap@{:02d}:{:.1f}".format(ch, cp)
         gfx.print_string(SAFE_X + ox, FOOTER_Y + 10 + oy,
                          line2, BLACK, COL_MID)
 
