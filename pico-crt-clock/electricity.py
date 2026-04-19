@@ -31,8 +31,8 @@ CHART_TILE_WIDTHS = (35, 35, 35, 35, 35, 35, 6)
 CHART_TILE_COUNT = len(CHART_TILE_WIDTHS)
 
 # Greyscale shades for bar tiers: cheap / mid / expensive.
-COL_CHEAP     = 6
-COL_MID       = 10
+COL_CHEAP     = 7
+COL_MID       = 11
 COL_EXPENSIVE = 15    # WHITE
 COL_GRID      = 6
 COL_NOW       = 15
@@ -222,7 +222,7 @@ def _build_chart_cache(prices, cur_hour, chart_tiles):
     # to help visually find the correct hour.
     for h in range(3, 24, 3):
         x = h * BAR_W + (BAR_W - 2) // 2 - 4
-        _fill_rect(chart_tiles, x, CHART_H - 4, x, CHART_H, WHITE)
+        _fill_rect(chart_tiles, x - 1, CHART_H - 4, x + 1, CHART_H, WHITE)
 
     gc.collect()
     return {
