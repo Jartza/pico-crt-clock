@@ -31,7 +31,7 @@ CHART_TILE_WIDTHS = (35, 35, 35, 35, 35, 35, 6)
 CHART_TILE_COUNT = len(CHART_TILE_WIDTHS)
 
 # Greyscale shades for bar tiers: cheap / mid / expensive.
-COL_CHEAP     = 5
+COL_CHEAP     = 6
 COL_MID       = 10
 COL_EXPENSIVE = 15    # WHITE
 COL_GRID      = 6
