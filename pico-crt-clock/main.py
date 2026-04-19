@@ -1,33 +1,28 @@
 from machine import Pin, soft_reset
 import time
+try:
+    from config_local import APPS
+except ImportError:
+    from config import APPS
 
-# Each mode has a dedicated GPIO with internal pull-up.
-# Connect the matching switch position to GND to activate that mode.
-# If no pin is pulled low, clock/weather runs as the default.
-#
-# Pin assignments - adjust to match your wiring:
-#   GPIO 10 -> clock/weather (also the default with no switch)
-#   GPIO 11 -> torus demo
-_PINS = [
-    Pin(10, Pin.IN, Pin.PULL_UP),   # mode 0: clock/weather
-    Pin(11, Pin.IN, Pin.PULL_UP),   # mode 1: torus
-    Pin(12, Pin.IN, Pin.PULL_UP),   # mode 2: news
-]
+# Build one pull-up input pin per app entry; the first pin that reads low
+# selects that app.  If nothing is pulled low, APPS[0] runs as the default.
+_pins = [(entry, Pin(entry[1], Pin.IN, Pin.PULL_UP)) for entry in APPS]
 
 time.sleep(0.1)  # debounce delay for mode switches
 
-mode = None
-for i, pin in enumerate(_PINS):
+selected = None
+for entry, pin in _pins:
     if not pin.value():
-        mode = i
+        selected = (entry, pin)
         break
+if selected is None:
+    selected = (_pins[0][0], None)   # no switch pressed -> default, no pin to watch
 
-if mode == 1:
-    import torus; torus.run(_PINS[1])
-elif mode == 2:
-    import news; news.run(_PINS[2])
-else:
-    # mode 0 or no switch connected - default clock/weather
-    import clock; clock.run(_PINS[0] if mode == 0 else None)
+entry, pin = selected
+module_name = entry[0]
+extras      = entry[2] if len(entry) > 2 else {}
 
+mod = __import__(module_name)
+mod.run(pin, **extras)
 soft_reset()

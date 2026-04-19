@@ -10,15 +10,25 @@ The `gfx` MicroPython module provides a general-purpose API for composite
 video output — pixel drawing, text, sprites, and screen control — usable for
 any MicroPython project that needs a B/W composite display.
 
-Three display modes are included, selected at boot by GPIO slide switches:
+Multiple display apps ship in this repo; which apps run, which GPIO each
+maps to, and how the news app reads its detail switch are all configured in
+`config.py` via the `APPS` list (see [Configuring apps](#configuring-apps)
+below). Default set:
 
-| Mode | GPIO | Description |
+| App | GPIO | Description |
 |---|---|---|
-| Clock / weather | GPIO 10 | Live clock, temperature, wind, 3-day forecast from [Open-Meteo](https://open-meteo.com) (no key needed) |
-| Torus demo | GPIO 11 | Animated 3D spinning torus rendered in real-time |
-| News reader | GPIO 12 | Scrolling Guardian API headlines with summary/detail switch on GPIO 13 |
+| Weather | GPIO 10 | Live clock, temperature, wind, 3-day forecast from [Open-Meteo](https://open-meteo.com) (no key needed) |
+| News reader | GPIO 12 | Scrolling Guardian API headlines with full / summary / RSVP switch on GPIO 13 + 14 |
+| Sky | GPIO 11 | Sun rise/set, moon phase, 24h aurora / KP-index forecast from [NOAA SWPC](https://www.swpc.noaa.gov/) |
 
-If no GPIO is pulled low the clock/weather mode runs as default.
+Optional extras that can be added to `APPS`:
+
+| App | Description |
+|---|---|
+| Electricity | 24h Nord Pool hourly spot price bar chart from [Elering Dashboard API](https://dashboard.elering.ee) (FI/SE/NO/DK/EE/LV/LT), configurable VAT + tax + transfer |
+| Torus demo | Animated 3D spinning torus; the original show-off demo |
+
+If no GPIO is pulled low the first entry in `APPS` (default: weather) runs.
 
 ---
 
@@ -152,17 +162,23 @@ pico-crt-clock/           project sources; build from here
   gfx_core1.c               core1 entry point and command dispatcher
   gfx_core1.h               gfx_core1_launch() declaration
   mod_gfx.c                 MicroPython C extension module "gfx"
-  main.py                   boot stub: reads GPIO mode switches, launches correct mode
-  common.py                 shared helpers: WiFi, NTP, banners, DST calculation
-  clock.py                  clock/weather application (mode 0)
-  torus.py                  spinning torus demo (mode 1)
-  news.py                   Guardian API news reader (mode 2)
-  config.py                 WiFi credentials, location, display options, news settings
-  icons.py                  pre-generated weather icon bytearrays
-  make_icons.py             PC-side icon generator (run to regenerate icons.py)
+  main.py                   boot stub: reads the APPS list from config and dispatches
+  common.py                 shared helpers: WiFi, NTP, banners, DST, HTTP stream-to-flash
+  weather.py                weather app (clock + temp + wind + 3-day forecast)
+  news.py                   Guardian API news reader (full / summary / RSVP switch)
+  sky.py                    sky app: sun/moon times, moon phase, aurora / KP forecast
+  electricity.py            Nord Pool hourly spot price chart (FI/SE/NO/DK/EE/LV/LT)
+  torus.py                  spinning torus demo (original show-off; optional opt-in)
+  config.py                 all user-tweakable settings (WiFi, location, APPS, per-app)
+  config_local.py           optional override of config.py (gitignored pattern)
+  icons.bin                 pre-generated weather icon bytearrays
+  make_icons.py             PC-side icon generator (run to regenerate icons.bin)
   gfx.py                    PC simulator mock of the gfx C extension (pygame)
   run_sim.py                runner for PC testing without hardware
-  newscache/                article cache written to flash during news fetch (auto-created)
+  newscache/                news cache written to flash during news fetch (auto-created)
+  weathercache/             weather cache written to flash during weather fetch (auto-created)
+  skycache/                 aurora/KP cache written to flash during sky fetch (auto-created)
+  eleccache/                electricity price cache written to flash (auto-created)
   patches/
     micropython-no-thread.patch   disables MicroPython threading (see below)
     pico-mposite-common.patch     pico-mposite patch applied to all variants (DMA IRQ, FIFO, SRAM, GPIO drive, deinit)
@@ -187,7 +203,7 @@ The RP2040 has two cores. Core1 runs the pico-mposite video engine exclusively,
 generating the composite PAL signal via PIO state machines and DMA. Core0 runs
 MicroPython with a custom `gfx` C extension module (`mod_gfx.c`).
 
-When `clock.py` calls a `gfx` function, `mod_gfx.c` encodes it as a command and
+When `weather.py` calls a `gfx` function, `mod_gfx.c` encodes it as a command and
 pushes it into a shared ring buffer (`gfx_queue`). Core1 loops on that queue,
 popping commands and dispatching them to the pico-mposite drawing functions
 (`gfx_core1.c`). The two cores communicate only through the queue; all video
@@ -298,7 +314,7 @@ Alternatively, copy files manually:
 ```bash
 mpremote fs cp pico-crt-clock/main.py    :main.py
 mpremote fs cp pico-crt-clock/common.py  :common.py
-mpremote fs cp pico-crt-clock/clock.py   :clock.py
+mpremote fs cp pico-crt-clock/weather.py :weather.py
 mpremote fs cp pico-crt-clock/torus.py   :torus.py
 mpremote fs cp pico-crt-clock/news.py    :news.py
 mpremote fs cp pico-crt-clock/icons.py   :icons.py
@@ -349,70 +365,116 @@ the firmware. The window title shows which font is active.
 
 | Key | Effect |
 |---|---|
-| `a` | Pull GPIO 10 low → clock/weather mode |
-| `b` | Pull GPIO 11 low → torus mode |
-| `c` | Pull GPIO 12 low → news mode |
-| `d` | Toggle GPIO 13 → news detail switch (summary / full article) |
-| `ESC` | Release all pins → default mode (clock/weather) |
+| `a` | Pull the GPIO for `APPS[0]` low → run the 1st app |
+| `b` | Pull the GPIO for `APPS[1]` low → run the 2nd app |
+| `c` | Pull the GPIO for `APPS[2]` low → run the 3rd app |
+| `d` | Pull the GPIO for `APPS[3]` low → run the 4th app (if present) |
+| `n` | Cycle news detail switch through its three positions (full / summary / RSVP) |
+| `o` / `p` | Raise / lower the simulated speed potentiometer (ADC on GPIO 26) |
+| `ESC` | Release all pins → run `APPS[0]` as default |
 
-Pressing a mode key latches that mode until ESC is pressed, mirroring a
-physical sliding switch. `d` toggles independently of the mode pins.
+Pressing a mode key latches that mode until `ESC` is pressed, mirroring a
+physical sliding switch.  `n` cycles news reading mode independently of the
+active app.
 
 ---
 
-## Modes
+## Apps
 
-### Mode 0 — Clock / weather (default)
+### Weather (default)
 
 Displays the current time, date, temperature, wind speed, and a 3-day weather
 forecast with icons. All weather data is fetched from
 [Open-Meteo](https://open-meteo.com) — no API key or sensors required.
 
-This mode runs automatically when no GPIO is pulled low (no switch connected).
+Runs automatically when no `APPS` GPIO is pulled low.
 
-### Mode 1 — Torus demo
-
-Real-time 3D spinning torus rendered using fixed-point arithmetic on the RP2040.
-Connect a switch between GPIO 11 and GND to activate.
-
-### Mode 2 — News reader
+### News reader
 
 Fetches articles from [The Guardian open platform API](https://open-platform.theguardian.com)
-and displays them with a smooth scrolling view. A second slide switch on GPIO 13
-selects between summary (trailText) and full article view without rebooting.
+and displays them with a smooth scrolling view. A secondary switch selects
+between three reading modes without rebooting:
 
-Connect a switch between GPIO 12 and GND to activate news mode.
-
-**GPIO 13 — summary / detail switch:**
-
-| GPIO 13 | Display |
+| Mode | What it shows |
 |---|---|
-| High (pull-up, default) | Short summary (trailText) — cycles quickly |
-| Low (switch to GND) | Full article — scrolls through the complete body text |
+| Full article | Scrolls through the complete body text |
+| Summary | Short trailText — cycles quickly through all stories |
+| RSVP | Rapid serial visual presentation: one word at a time, Spritz-style |
 
-Flipping the switch mid-article clears the screen and reloads the same story in
-the new mode. This lets you skim headlines in summary mode and switch to full
-article only for stories that catch your interest.
+Flipping the detail switch mid-article clears the screen and reloads the same
+story in the new mode.  The GPIO pins used for the detail switch are mapped by
+the `modes` dict in the `APPS` entry — see [Configuring apps](#configuring-apps).
+Omit the GPIO keys to lock news to a single reading mode and save two pins.
 
-**Getting a Guardian API key:**
+You need your own Guardian Open Platform API key (free, 5000 requests/day):
 
-You need your own Guardian Open Platform API key for news mode. The example
-value in this repository is only a placeholder.
-
-1. Open https://open-platform.theguardian.com and register for a developer account
+1. Open https://open-platform.theguardian.com and register
 2. Create an application to get a Content API key
 3. Copy your key into `config.py` as `NEWS_API_KEY`
 4. Do not commit your real key to Git
 
-The free tier allows 5000 requests/day, which is more than enough for normal
-use with the default settings.
-
 Articles are cached to flash in `newscache/` so re-entering news mode within
-`NEWS_INTERVAL` seconds does not trigger a new fetch. The cache is refreshed
-automatically when the interval expires.
+`NEWS_INTERVAL` seconds does not trigger a new fetch.
 
-> **Note:** Writing to flash briefly disrupts the composite video signal. The
-> screen blanks for a few seconds during fetch — this is normal.
+### Sky
+
+Displays today's sun rise/set and daylight duration, the current moon phase
+as a filled greyscale disc with age/illumination, and a next-24h aurora
+forecast as a KP-index sparkline with a configurable visibility threshold.
+Sun and moon positions are computed locally from `LATITUDE`/`LONGITUDE` and
+NTP time; the KP forecast is fetched from [NOAA SWPC](https://www.swpc.noaa.gov/).
+
+Set `SKY_AURORA_KP_VISIBLE` to the KP value that means "aurora likely at
+your latitude" (rough guide: 5 at 60°N, 6 at 55°N, 3 at 70°N).
+
+### Electricity spot price
+
+Displays today's hourly Nord Pool day-ahead electricity price as a 24-bar chart.
+Bars below `ELEC_CHEAP_CKWH` are light grey, above `ELEC_EXPENSIVE_CKWH` are
+white, in between are mid-grey.  The current hour is marked with a tick above
+its bar; the footer shows current / min / max / cheapest-upcoming c/kWh.
+
+Set `ELEC_SHOW_TOTAL = True` to add VAT + electricity tax + transfer fee on
+top of the raw spot price (Finnish convention: VAT applies to the whole,
+including tax and transfer).  Set any component to 0 to leave it out.  Supports
+all Elering dashboard price areas (FI / SE1-4 / NO1-5 / DK1-2 / EE / LV / LT).
+
+### Torus (legacy demo)
+
+Real-time 3D spinning torus rendered using fixed-point arithmetic on the
+RP2040.  Not in the default `APPS` list — uncomment its line in `config.py`
+to enable.
+
+> **Note:** Flash writes briefly disrupt the composite video signal during
+> weather / news / sky / electricity fetches.  The screen blanks for a few
+> seconds — set `DEINIT_GFX_DURING_FETCH = False` in `config.py` to keep the
+> picture live at the cost of visible glitches during the cache writes.
+
+---
+
+## Configuring apps
+
+Which apps run, which GPIO each maps to, and how the news reader interprets
+its detail-switch pins are all declared in `config.py` as the `APPS` list.
+Each entry is a tuple:
+
+```python
+APPS = [
+    ("weather", 10),
+    ("news",    12, {"modes": {"default": "summary", 13: "full", 14: "rsvp"}}),
+    ("sky",     11),
+    # ("electricity", 15),
+    # ("torus",       11),
+]
+```
+
+- The first entry is the default app when no GPIO is pulled low.
+- Wire each GPIO through a switch position to GND to select that app.
+- Comment out any app you don't want; change the GPIOs to match your wiring.
+- For news, the `modes` dict maps GPIO numbers to reading modes, with
+  `"default"` as the mode shown when no mapped pin is low.  Omit the integer
+  keys entirely (e.g. `{"default": "full"}`) to lock news to one mode and free
+  up those GPIOs.
 
 ---
 
@@ -489,6 +551,45 @@ Available Guardian sections include: `world`, `technology`, `science`,
 `business`, `environment`, `politics`, `culture`, `sport`, and many more.
 See the [Guardian API explorer](https://open-platform.theguardian.com/explore/)
 for the full list.
+
+### Sky
+
+```python
+SKY_INTERVAL          = 30 * 60   # aurora/KP refresh interval (seconds)
+SKY_AURORA_KP_VISIBLE = 5         # KP threshold for "aurora likely"
+                                  # 5 @ 60N, 6 @ 55N, 3 @ 70N
+```
+
+Sun rise/set and moon phase are computed locally from `LATITUDE` /
+`LONGITUDE`; the KP forecast is fetched from NOAA SWPC (no key required).
+
+### Electricity
+
+```python
+ELEC_AREA             = "fi"      # fi/ee/lv/lt/se1..4/no1..5/dk1/dk2
+ELEC_SHOW_TOTAL       = True      # True = VAT + tax + transfer added
+                                  # False = raw spot price only
+ELEC_VAT_PCT          = 25.5      # set to 0 to skip VAT
+ELEC_TAX_CKWH         = 2.827     # set to 0 on a tax-free tariff
+ELEC_TRANSFER_CKWH    = 5.0       # set to 0 to hide transfer/margin
+ELEC_CHEAP_CKWH       = 5.0       # below -> light grey bar
+ELEC_EXPENSIVE_CKWH   = 15.0      # above -> white bar
+ELEC_DRAW_THRESHOLDS  = True      # draw horizontal rule lines at thresholds
+ELEC_INTERVAL         = 60 * 60   # fetch interval (seconds)
+```
+
+VAT is applied to `(spot + tax + transfer)` as a whole when
+`ELEC_SHOW_TOTAL` is True, matching the Finnish convention that electricity
+tax and transfer fees are inside the VAT base.  Prices come from
+[Elering](https://dashboard.elering.ee) (no auth required).
+
+### Fetch glitch behaviour
+
+```python
+DEINIT_GFX_DURING_FETCH = True    # True = pause video during flash cache writes
+                                  # (shows "no signal" banner)
+                                  # False = keep video live, accept glitches
+```
 
 ---
 

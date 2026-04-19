@@ -260,16 +260,21 @@ _border_colour = 0
 
 # GPIO simulation
 # SimPin objects are appended here in order as machine.Pin() is called.
-# Keys a/b/c switch modes exclusively (only one low at a time); ESC = all high.
-# Key d cycles the news detail switch through its 3 positions (summary -> rsvp ->
-# full -> summary), driving sim pins 3 (GPIO 13) and 4 (GPIO 14) accordingly.
+# run_sim.py sets _mode_pin_count = len(APPS) before the app boots so we know
+# how many of the early pins belong to main.py's mode-select dispatch and how
+# many trailing pins belong to the running app (e.g. news's detail switch).
+# Keys a/b/c/d switch modes exclusively (one low at a time); ESC = all high.
+# Key n cycles the news detail switch through its 3 positions, driving the
+# first two app-level sim pins accordingly.
 # Detail mode persists across soft-resets via _detail_mode.
-_sim_pins    = []
-_desired_mode = 0      # persists across sim reboots; updated by _set_gpio_mode
-_detail_mode  = 1      # 0=full, 1=summary, 2=rsvp (default: summary, matches prior sim default)
-_adc_value    = 32768  # simulated ADC raw value 0-65535; o=raise, p=lower (step 2048)
+_sim_pins        = []
+_mode_pin_count  = 3      # overridden by run_sim.py based on len(APPS)
+_desired_mode    = 0      # persists across sim reboots; updated by _set_gpio_mode
+_detail_mode     = 1      # 0=full, 1=summary, 2=rsvp (default: summary)
+_adc_value       = 32768  # simulated ADC raw value 0-65535; o=raise, p=lower (step 2048)
 
 _DETAIL_LABELS = ("full news", "summary", "RSVP")
+_MODE_KEYS     = "abcd"   # first N letters map to APPS[0..N-1]
 
 class _SimPin:
     __slots__ = ('_low',)
@@ -280,25 +285,31 @@ _KEY_TO_PIN = {
     pygame.K_a: 0,
     pygame.K_b: 1,
     pygame.K_c: 2,
+    pygame.K_d: 3,
 }
 
 def _set_gpio_mode(idx):
-    """Pull mode pin idx low (pins 0-2 only, exclusive). idx=-1 = all mode pins high."""
+    """Pull mode pin idx low (exclusive among mode pins). idx=-1 = all high.
+    Only affects the first _mode_pin_count sim pins."""
     global _desired_mode
+    if 0 <= idx and idx >= _mode_pin_count:
+        return   # key pressed beyond the configured app count; ignore
     _desired_mode = idx
-    for i, p in enumerate(_sim_pins[:3]):
+    for i, p in enumerate(_sim_pins[:_mode_pin_count]):
         p._low = (i == idx)
     _update_caption()
 
 def _apply_detail():
-    """Drive sim pins 3 (GPIO 13) and 4 (GPIO 14) from _detail_mode.
-    Mode 0 (full):    both pins high.
-    Mode 1 (summary): pin 3 (GPIO 13) low, pin 4 high.
-    Mode 2 (rsvp):    pin 3 high, pin 4 (GPIO 14) low."""
-    if len(_sim_pins) > 3:
-        _sim_pins[3]._low = (_detail_mode == 1)
-    if len(_sim_pins) > 4:
-        _sim_pins[4]._low = (_detail_mode == 2)
+    """Drive the two app-level detail pins (first pins after the mode pins)
+    based on _detail_mode.  Mode 0 (full) = both pins' low-states off; modes
+    1 and 2 drive the corresponding single pin low.  Which mode each pin
+    activates is defined by the news app's config; the sim just toggles
+    detail_mode and lets news interpret the pin pattern."""
+    a = _mode_pin_count
+    if len(_sim_pins) > a:
+        _sim_pins[a]._low = (_detail_mode == 1)
+    if len(_sim_pins) > a + 1:
+        _sim_pins[a + 1]._low = (_detail_mode == 2)
 
 def _cycle_detail():
     """Advance the 3-position news switch: full -> summary -> rsvp -> full."""
@@ -317,14 +328,13 @@ def _update_caption():
     if not pygame.get_init():
         return
     font_tag = "C64 font" if _FONT_NAME == 'c64' else "Spectrum font"
-    keys = "abc"
-    n_mode = min(len(_sim_pins), 3)
-    active = next((i for i, p in enumerate(_sim_pins[:3]) if p._low), None)
+    n_mode   = min(len(_sim_pins), _mode_pin_count)
+    active   = next((i for i, p in enumerate(_sim_pins[:_mode_pin_count]) if p._low), None)
     adc_disp = f"  o/p=ADC:{_adc_value >> 8}"
     if _sim_pins:
-        hints = "  ".join(f"{keys[i]}=mode {i}" for i in range(n_mode))
-        if len(_sim_pins) > 3:
-            hints += f"  d={_DETAIL_LABELS[_detail_mode]}"
+        hints = "  ".join(f"{_MODE_KEYS[i]}=mode {i}" for i in range(n_mode))
+        if len(_sim_pins) > _mode_pin_count:
+            hints += f"  n={_DETAIL_LABELS[_detail_mode]}"
         mode  = f"mode {active}" if active is not None else "default"
         caption = f"pico-crt-clock sim [{font_tag}]  |  {hints}  ESC=default  [{mode}]{adc_disp}"
     else:
@@ -359,7 +369,7 @@ def _pump():
         elif ev.type == pygame.KEYDOWN:
             if ev.key in _KEY_TO_PIN:
                 _set_gpio_mode(_KEY_TO_PIN[ev.key])
-            elif ev.key == pygame.K_d:
+            elif ev.key == pygame.K_n:
                 _cycle_detail()
             elif ev.key == pygame.K_o:
                 global _adc_value
@@ -404,7 +414,7 @@ def _draw_char(x, y, ch, bg, fg, scale=1):
 # Public API (mirrors mod_gfx.c)
 
 def usb_ready():
-    """Always False in simulation - skips USB detect loop in clock.py."""
+    """Always False in simulation - skips USB detect loop in weather.py."""
     return False
 
 def usb_disable():

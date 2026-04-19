@@ -10,7 +10,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 FILES=(
     main.py
     common.py
-    clock.py
+    weather.py
     torus.py
     news.py
     icons.bin

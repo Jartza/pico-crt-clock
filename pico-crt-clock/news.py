@@ -39,20 +39,17 @@ RSVP_PIN_COL = 127   # pinpoint column: ORP left edge + 7
 RSVP_MAX_LEN = 16    # word chars that fit at 2x font (16 px/char * 16 = 256)
 COLOUR6      = 6     # mid-gray background for ORP highlight
 
-# News detail switch modes, derived from GPIO 13 + GPIO 14 pin values.
-# Pos 1 (GPIO13 H, GPIO14 H) = RSVP
-# Pos 2 (GPIO13 L, GPIO14 H) = summary
-# Pos 3 (GPIO13 H, GPIO14 L) = full article
+# News detail switch modes.  The mapping between GPIO pins and modes is set
+# per-device from the APPS config entry's "modes" dict (see config.py).
 MODE_FULL    = 0
 MODE_SUMMARY = 1
 MODE_RSVP    = 2
 
-def _detail_mode(v13, v14):
-    if v14 == 0:
-        return MODE_FULL
-    if v13 == 0:
-        return MODE_SUMMARY
-    return MODE_RSVP
+_MODE_NAME_TO_CONST = {
+    "full":    MODE_FULL,
+    "summary": MODE_SUMMARY,
+    "rsvp":    MODE_RSVP,
+}
 
 def _check_detail_swap(p13, c13, e13, p14, c14, e14):
     """Poll both detail pins. Return (swap, c13, e13, c14, e14) where swap is True
@@ -698,7 +695,14 @@ def _show_article_rsvp(filename, pin, mode_counter, mode_expected,
     return None, mode_counter, c13, e13, c14, e14
 
 # Entry point
-def run(pin=None):
+def run(pin=None, modes=None):
+    """Run the news reader.
+
+    modes dict shape:
+      "default": "full" | "summary" | "rsvp"   - mode when no mapped pin is low
+      <int gpio>: "full" | "summary" | "rsvp"  - mode activated when that pin is low
+    Any GPIO key is optional - omit both and news stays locked on the default mode.
+    """
     global wlan
     from machine import Pin as _Pin
 
@@ -706,10 +710,25 @@ def run(pin=None):
     gfx.set_border(0)
     gfx.cls(BLACK)
 
-    # GPIO 13 + 14: 3-position detail switch.
-    # Pos 1 both high = RSVP, pos 2 GPIO13 low = summary, pos 3 GPIO14 low = full.
-    p13 = _Pin(13, _Pin.IN, _Pin.PULL_UP)
-    p14 = _Pin(14, _Pin.IN, _Pin.PULL_UP)
+    if modes is None:
+        # Matches pre-refactor behaviour: p13 low = summary, p14 low = full, neither = rsvp.
+        modes = {"default": "rsvp", 13: "summary", 14: "full"}
+    default_mode = _MODE_NAME_TO_CONST[modes.get("default", "rsvp")]
+
+    # Build up to two detail pins from the integer keys of modes, preserving
+    # the module's existing p13/p14 plumbing (first detail gpio -> p13, second -> p14).
+    _gpios = [(k, _MODE_NAME_TO_CONST[v]) for k, v in modes.items() if isinstance(k, int)]
+    p13 = _Pin(_gpios[0][0], _Pin.IN, _Pin.PULL_UP) if len(_gpios) >= 1 else None
+    p14 = _Pin(_gpios[1][0], _Pin.IN, _Pin.PULL_UP) if len(_gpios) >= 2 else None
+    m13 = _gpios[0][1] if len(_gpios) >= 1 else None
+    m14 = _gpios[1][1] if len(_gpios) >= 2 else None
+
+    def _detail_mode(v13, v14):
+        if p14 is not None and v14 == 0:
+            return m14
+        if p13 is not None and v13 == 0:
+            return m13
+        return default_mode
 
     wlan = connect_wifi()
     if wlan is None:
@@ -732,8 +751,9 @@ def run(pin=None):
     mode_expected = 0
     mode_counter  = 0
     # Initial detail pin state: read from actual pins so no spurious SWAP fires at boot.
-    e13 = p13.value()
-    e14 = p14.value()
+    # None pins report as "high" so they never contribute to mode changes.
+    e13 = p13.value() if p13 is not None else 1
+    e14 = p14.value() if p14 is not None else 1
     c13 = 0
     c14 = 0
 

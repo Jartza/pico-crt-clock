@@ -1,4 +1,3 @@
-import urequests
 import json
 import gc
 import os
@@ -115,25 +114,6 @@ def _day_icons(wmo_code, sunshine_s, daylight_s, precip_sum_mm, precip_prob):
 
     return sky_ic, prc_ic
 
-def _stream_get(url, filename):
-    """Stream HTTP GET to a file in 512-byte chunks so the full response
-    body is never held in RAM."""
-    r = None
-    try:
-        r = urequests.get(url, timeout=30)
-        with open(filename, 'wb') as f:
-            while True:
-                chunk = r.raw.read(512)
-                if not chunk:
-                    break
-                f.write(chunk)
-    finally:
-        if r is not None:
-            try:
-                r.close()
-            except Exception:
-                pass
-
 def _load_cached_weather():
     """Parse cached weather files into a merged dict. Returns None on failure."""
     try:
@@ -188,14 +168,14 @@ def fetch_weather():
             os.mkdir(WEATHER_DIR)
         except OSError:
             pass
-        _stream_get(
+        stream_get(
             base + "&current=weather_code,wind_speed_10m"
                    "&daily=weather_code,temperature_2m_max,sunshine_duration"
                    ",daylight_duration,precipitation_sum,precipitation_probability_mean"
                    "&forecast_days=7&temperature_unit={}&wind_speed_unit={}".format(tunit, WIND_UNIT),
             WEATHER_DAILY_CACHE)
         gc.collect()
-        _stream_get(
+        stream_get(
             base + "&hourly=temperature_2m&forecast_days=1&temperature_unit={}".format(tunit),
             WEATHER_HOURLY_CACHE)
         gc.collect()

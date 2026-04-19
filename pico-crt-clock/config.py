@@ -90,3 +90,49 @@ USE_ADC_SPEED = False
 # goes blank for a few seconds.  Set to False to keep the picture live during
 # fetch (you will see brief glitches whenever cache files are written).
 DEINIT_GFX_DURING_FETCH = True
+
+# Apps available on this device, in switch-position order.
+# Each entry is a tuple: (module_name, gpio) or (module_name, gpio, extras_dict).
+# Pull a GPIO to GND via your mode-select switch to activate that app.  If no
+# switch is pressed, the FIRST entry runs as the default.
+#
+# To run fewer apps: comment out lines you don't want.  To remap GPIOs to
+# match your wiring: edit the numbers.  First entry = default app.
+#
+# The news entry's "modes" dict maps GPIO numbers to the reading mode they
+# activate when pulled to GND, with "default" as the mode used when no mapped
+# pin is pulled low.  Valid modes are "full", "summary", "rsvp".  Wire any
+# subset of pins - e.g. {"default": "full"} with no GPIO keys locks news to
+# full-article mode and needs no detail switch.
+APPS = [
+    ("weather", 10),
+    ("news",    12, {"modes": {"default": "summary", 13: "full", 14: "rsvp"}}),
+    ("sky",     11),
+    # ("electricity", 15),          # uncomment and wire a 4th switch position to enable
+    # ("torus",       11),          # legacy 3D demo; swap for "sky" above if wanted
+]
+
+# --- sky ---
+# Aurora / KP-index forecast refresh interval (seconds)
+SKY_INTERVAL          = 30 * 60
+# KP threshold at which aurora is likely visible for your latitude.
+# Rough guide: KP 5+ for 60 deg N, KP 6+ for 55 deg N, KP 3+ for 70 deg N.
+SKY_AURORA_KP_VISIBLE = 5
+
+# --- electricity ---
+# Nord Pool price area: fi, ee, lv, lt, se1..se4, no1..no5, dk1, dk2
+ELEC_AREA             = "fi"
+# True = include VAT + tax + transfer in displayed price; False = raw spot only.
+ELEC_SHOW_TOTAL       = True
+# These only apply when ELEC_SHOW_TOTAL is True.  Set any to 0 to skip it.
+# Note: VAT is applied to (spot + tax + transfer) as a whole, matching Finnish
+# practice - electricity tax and transfer fees are part of the VAT base.
+ELEC_VAT_PCT          = 25.5
+ELEC_TAX_CKWH         = 2.827
+ELEC_TRANSFER_CKWH    = 5.0
+# Threshold values in c/kWh - bars below CHEAP are light grey, above
+# EXPENSIVE are white, in between are mid grey.
+ELEC_CHEAP_CKWH       = 5.0
+ELEC_EXPENSIVE_CKWH   = 15.0
+# Draw horizontal rule lines at the threshold levels
+ELEC_DRAW_THRESHOLDS  = True

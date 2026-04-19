@@ -8,12 +8,9 @@ Options:
   --c64font   Use the Commodore 64 font instead of the default ZX Spectrum font.
 
 GPIO simulation (switches between modes):
-  a       pull GPIO for mode 0 (clock/weather) low
-  b       pull GPIO for mode 1 (torus) low
-  c       pull GPIO for mode 2 (news) low
-  d       cycle news detail switch: summary -> rsvp -> full -> summary
-          (summary = GPIO 13 low, rsvp = GPIO 14 low, full = both high)
-  ESC     release all pins -> default mode (clock/weather with no switch)
+  a/b/c/d pull the GPIO for APPS entry 0/1/2/3 low (first 4 entries, in order)
+  n       cycle news detail switch through its configured positions
+  ESC     release all pins -> default mode (APPS[0] with no switch)
 
   Pressing a key latches that mode until ESC is pressed, mirroring a physical
   sliding switch.  soft_reset() triggers an automatic reboot into the new mode.
@@ -100,13 +97,14 @@ class _Pin:
     def __init__(self, num, mode=None, pull=None):
         self._sim = _gfx._SimPin()
         idx = len(_gfx._sim_pins)
-        if idx < 3:
+        N   = _gfx._mode_pin_count
+        if idx < N:
             if idx == _gfx._desired_mode:
                 self._sim._low = True   # restore mode pin that was active before reboot
-        elif idx == 3:
-            self._sim._low = (_gfx._detail_mode == 1)   # GPIO 13 low = summary
-        elif idx == 4:
-            self._sim._low = (_gfx._detail_mode == 2)   # GPIO 14 low = rsvp
+        elif idx == N:
+            self._sim._low = (_gfx._detail_mode == 1)   # first detail pin - summary position
+        elif idx == N + 1:
+            self._sim._low = (_gfx._detail_mode == 2)   # second detail pin - rsvp position
         _gfx._sim_pins.append(self._sim)
         _gfx._update_caption()
 
@@ -173,8 +171,18 @@ urequests         = types.ModuleType('urequests')
 urequests.get     = _get
 sys.modules['urequests'] = urequests
 
+# Read APPS so the sim knows how many mode pins main.py will create.
+try:
+    from config_local import APPS as _APPS
+except ImportError:
+    from config import APPS as _APPS
+_gfx._mode_pin_count = len(_APPS)
+
 # Modules to clear on each soft_reset so they re-import fresh.
-_APP_MODULES = {'main', 'clock', 'torus', 'news', 'common'}
+_APP_MODULES = {
+    'main', 'common', 'config', 'config_local',
+    'weather', 'news', 'torus', 'sky', 'electricity',
+}
 
 # Compile main.py once; re-exec on every soft_reset.
 with open(os.path.join(_here, 'main.py')) as f:

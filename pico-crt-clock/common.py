@@ -3,6 +3,7 @@ import time
 import network
 import ntptime
 import machine
+import urequests
 try:
     from config_local import *
 except ImportError:
@@ -14,7 +15,7 @@ __all__ = [
     'BLACK', 'WHITE', 'WIFI_TIMEOUT_MS',
     '_weekday', '_last_sunday', '_utc_offset',
     'draw_banner', 'connect_wifi', 'reconnect_wifi', 'sync_ntp', 'check_pin_stable',
-    'read_speed_adc',
+    'read_speed_adc', 'stream_get',
 ]
 
 BLACK = 0
@@ -121,6 +122,26 @@ def sync_ntp(clear=False):
     except Exception:
         gfx.cls(BLACK)
         return False
+
+def stream_get(url, filename, chunk_size=512, timeout=30):
+    """Stream an HTTP GET response straight to a file in small chunks so the
+    full body never lives in the Python heap.  Used by any app that caches
+    fetched JSON to flash (weather, news, sky, electricity)."""
+    r = None
+    try:
+        r = urequests.get(url, timeout=timeout)
+        with open(filename, 'wb') as f:
+            while True:
+                chunk = r.raw.read(chunk_size)
+                if not chunk:
+                    break
+                f.write(chunk)
+    finally:
+        if r is not None:
+            try:
+                r.close()
+            except Exception:
+                pass
 
 _speed_adc = None
 
