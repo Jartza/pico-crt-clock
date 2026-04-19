@@ -62,6 +62,9 @@ extern gfx_queue_t gfx_queue;
 extern volatile uint8_t gfx_blit_buf[GFX_BLIT_BUFSIZE];
 extern volatile bool    gfx_blit_busy;
 extern volatile bool    gfx_deinit_done;  // set by core1 after CMD_DEINIT completes
+extern volatile bool    gfx_flash_freeze_requested;
+extern volatile bool    gfx_flash_frozen;
+extern volatile bool    gfx_core1_online;
 
 // Inline queue helpers (safe to call from either core)
 

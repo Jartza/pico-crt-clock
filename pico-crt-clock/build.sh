@@ -58,6 +58,7 @@ MODULE_CMAKE="$SCRIPT_DIR/micropython.cmake"
 PIO_SRC="$ROOT/pico-mposite"
 
 PATCH_MP="$SCRIPT_DIR/patches/micropython-no-thread.patch"
+PATCH_MP_FLASH="$SCRIPT_DIR/patches/micropython-flash-freeze.patch"
 
 # Parse arguments
 VARIANT=""
@@ -135,6 +136,7 @@ revert_patch() {
 
 cleanup() {
     echo "Reverting patches to restore vanilla submodules..."
+    revert_patch "$ROOT/micropython" "$PATCH_MP_FLASH"
     revert_patch "$ROOT/micropython" "$PATCH_MP"
     # Revert in reverse application order; font patch is independent of the
     # others (touches only charset.c) so order relative to them doesn't matter.
@@ -158,6 +160,7 @@ FONT_LABEL=""
 [ "$C64FONT" = "1" ] && FONT_LABEL=", font: c64"
 echo "Applying patches (variant: $VARIANT$FONT_LABEL)..."
 apply_patch "$ROOT/micropython" "$PATCH_MP"
+apply_patch "$ROOT/micropython" "$PATCH_MP_FLASH"
 apply_patch "$ROOT/pico-mposite" "$PATCH_PM_COMMON"
 apply_patch "$ROOT/pico-mposite" "$PATCH_PM_DRAWLINE"
 apply_patch "$ROOT/pico-mposite" "$PATCH_PM_SCANLINE"

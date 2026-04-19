@@ -16,6 +16,9 @@ gfx_queue_t          gfx_queue      = {0};
 volatile uint8_t     gfx_blit_buf[GFX_BLIT_BUFSIZE];
 volatile bool        gfx_blit_busy  = false;
 volatile bool        gfx_deinit_done = false;
+volatile bool        gfx_flash_freeze_requested = false;
+volatile bool        gfx_flash_frozen = false;
+volatile bool        gfx_core1_online = false;
 
 // Double-size character renderer
 // Renders one glyph at 2x scale (16x16 px) by writing 2x2 pixel blocks
@@ -129,6 +132,7 @@ static void dispatch(const gfx_cmd_t *c) {
             break;
 
         case CMD_DEINIT:
+            gfx_core1_online = false;
             deinit_cvideo();
             __dmb();
             gfx_deinit_done = true;
@@ -141,22 +145,33 @@ static void dispatch(const gfx_cmd_t *c) {
     }
 }
 
+// Park core1 in SRAM while core0 temporarily disables XIP for a flash write.
+// Keep this out-of-line and in RAM: if it gets inlined into core1_main then
+// the "freeze" path still executes from flash and defeats the whole purpose.
+static void __no_inline_not_in_flash_func(gfx_core1_wait_if_frozen)(void) {
+    gfx_flash_frozen = true;
+    __dmb();
+    __sev();
+    while (gfx_flash_freeze_requested) {
+        __wfe();
+    }
+    gfx_flash_frozen = false;
+    __dmb();
+    __sev();
+}
+
 // Core1 entry point
 static void core1_main(void) {
     // ALL video IRQ and DMA setup happens here - on core1 - so that
     // DMA_IRQ_1 and PIO0_IRQ_0 are owned by core1's NVIC.
     initialise_cvideo();
-
-    // Allow MicroPython's flash write path to temporarily pause this core.
-    // The lockout victim flag survives soft resets, so without this core1
-    // won't ACK multicore_lockout_start_blocking() -> webREPL/USB write hangs.
-    // DMA/PIO are autonomous hardware and keep running during the lockout;
-    // the dispatcher may miss a frame but that's acceptable.
-    multicore_lockout_victim_init();
+    gfx_core1_online = true;
 
     gfx_cmd_t cmd;
     while (1) {
-        if (gfx_queue_pop(&cmd)) {
+        if (gfx_flash_freeze_requested) {
+            gfx_core1_wait_if_frozen();
+        } else if (gfx_queue_pop(&cmd)) {
             dispatch(&cmd);
             __sev();
         } else {
@@ -185,4 +200,31 @@ void gfx_core1_launch(void) {
     // core1 to finish rather than returning immediately.
     gfx_deinit_done = false;
     multicore_launch_core1_with_stack(core1_main, core1_stack, sizeof(core1_stack));
+}
+
+bool gfx_core1_flash_freeze_enter(void) {
+    if (!gfx_core1_online) {
+        return false;
+    }
+    gfx_flash_freeze_requested = true;
+    __dmb();
+    __sev();
+    while (gfx_core1_online && !gfx_flash_frozen) {
+        tight_loop_contents();
+    }
+    return gfx_core1_online;
+}
+
+void gfx_core1_flash_freeze_exit(void) {
+    if (!gfx_core1_online) {
+        gfx_flash_freeze_requested = false;
+        gfx_flash_frozen = false;
+        return;
+    }
+    gfx_flash_freeze_requested = false;
+    __dmb();
+    __sev();
+    while (gfx_core1_online && gfx_flash_frozen) {
+        tight_loop_contents();
+    }
 }

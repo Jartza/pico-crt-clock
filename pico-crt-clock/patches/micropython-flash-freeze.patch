@@ -1,0 +1,99 @@
+diff --git a/ports/rp2/rp2_flash.c b/ports/rp2/rp2_flash.c
+--- a/ports/rp2/rp2_flash.c
++++ b/ports/rp2/rp2_flash.c
+@@ -41,6 +41,11 @@
+ #include "hardware/structs/ssi.h"
+ #endif
+ 
++// Optional hooks provided by the gfx user module.  When present they park the
++// video core in SRAM so the display can hold the last frame during flash ops.
++bool gfx_core1_flash_freeze_enter(void) __attribute__((weak));
++void gfx_core1_flash_freeze_exit(void) __attribute__((weak));
++
+ #define BLOCK_SIZE_BYTES (FLASH_SECTOR_SIZE)
+ 
+ // Size of buffer for flash writes from PSRAM, since they are mutually exclusive
+@@ -168,11 +173,21 @@
+ 
+ // Flash erase and write must run with interrupts disabled and the other core suspended,
+ // because the XIP bit gets disabled.
+-static uint32_t begin_critical_flash_section(void) {
+-    if (use_multicore_lockout()) {
++typedef struct _critical_flash_section_state_t {
++    uint32_t irq_state;
++    bool used_gfx_freeze;
++    bool used_multicore_lockout;
++} critical_flash_section_state_t;
++static critical_flash_section_state_t begin_critical_flash_section(void) {
++    critical_flash_section_state_t state = {0};
++
++    if (gfx_core1_flash_freeze_enter != NULL && gfx_core1_flash_freeze_enter()) {
++        state.used_gfx_freeze = true;
++    } else if (use_multicore_lockout()) {
+         multicore_lockout_start_blocking();
++        state.used_multicore_lockout = true;
+     }
+-    uint32_t state = save_and_disable_interrupts();
++    state.irq_state = save_and_disable_interrupts();
+ 
+     #if MICROPY_HW_ENABLE_PSRAM
+     // We're about to invalidate the XIP cache, clean it first to commit any dirty writes to PSRAM
+@@ -188,16 +203,19 @@
+     return state;
+ }
+ 
+-static void end_critical_flash_section(uint32_t state) {
++static void end_critical_flash_section(critical_flash_section_state_t state) {
+     // The ROM function to program flash will have reset flash and PSRAM timings to defaults
+     rp2_flash_set_timing_internal(clock_get_hz(clk_sys));
+     #if MICROPY_HW_ENABLE_PSRAM
+     psram_init(MICROPY_HW_PSRAM_CS_PIN);
+     #endif
+-    restore_interrupts(state);
+-    if (use_multicore_lockout()) {
++    restore_interrupts(state.irq_state);
++    if (state.used_multicore_lockout) {
+         multicore_lockout_end_blocking();
+     }
++    if (state.used_gfx_freeze && gfx_core1_flash_freeze_exit != NULL) {
++        gfx_core1_flash_freeze_exit();
++    }
+ }
+ 
+ static mp_obj_t rp2_flash_make_new(const mp_obj_type_t *type, size_t n_args, size_t n_kw, const mp_obj_t *all_args) {
+@@ -278,7 +296,7 @@
+     mp_buffer_info_t bufinfo;
+     mp_get_buffer_raise(args[2], &bufinfo, MP_BUFFER_READ);
+     if (n_args == 3) {
+-        mp_uint_t atomic_state = begin_critical_flash_section();
++        critical_flash_section_state_t atomic_state = begin_critical_flash_section();
+         flash_range_erase(self->flash_base + offset, bufinfo.len);
+         end_critical_flash_section(atomic_state);
+         mp_event_handle_nowait();
+@@ -297,7 +315,7 @@
+ 
+     if (write_direct) {
+         // If copying from SRAM, write direct
+-        mp_uint_t atomic_state = begin_critical_flash_section();
++        critical_flash_section_state_t atomic_state = begin_critical_flash_section();
+         flash_range_program(self->flash_base + offset, bufinfo.buf, bufinfo.len);
+         end_critical_flash_section(atomic_state);
+         mp_event_handle_nowait();
+@@ -310,7 +328,7 @@
+ 
+         while (bytes_left) {
+             memcpy(copy_buffer, bufinfo.buf + bytes_offset, MIN(bytes_left, COPY_BUFFER_SIZE_BYTES));
+-            mp_uint_t atomic_state = begin_critical_flash_section();
++            critical_flash_section_state_t atomic_state = begin_critical_flash_section();
+             flash_range_program(self->flash_base + offset + bytes_offset, copy_buffer, MIN(bytes_left, COPY_BUFFER_SIZE_BYTES));
+             end_critical_flash_section(atomic_state);
+             bytes_offset += COPY_BUFFER_SIZE_BYTES;
+@@ -344,7 +362,7 @@
+             return MP_OBJ_NEW_SMALL_INT(BLOCK_SIZE_BYTES);
+         case MP_BLOCKDEV_IOCTL_BLOCK_ERASE: {
+             uint32_t offset = mp_obj_get_int(arg_in) * BLOCK_SIZE_BYTES;
+-            mp_uint_t atomic_state = begin_critical_flash_section();
++            critical_flash_section_state_t atomic_state = begin_critical_flash_section();
+             flash_range_erase(self->flash_base + offset, BLOCK_SIZE_BYTES);
+             end_critical_flash_section(atomic_state);
+             // TODO check return value
