@@ -11,9 +11,9 @@ video output — pixel drawing, text, sprites, and screen control — usable for
 any MicroPython project that needs a B/W composite display.
 
 Multiple display apps ship in this repo; which apps run, which GPIO each
-maps to, and how the news app reads its detail switch are all configured in
-`config.py` via the `APPS` list (see [Configuring apps](#configuring-apps)
-below). Default set:
+maps to, and how apps with local detail modes read their secondary switch are
+all configured in `config.py` via the `APPS` list (see
+[Configuring apps](#configuring-apps) below). Default set:
 
 | App | GPIO | Description |
 |---|---|---|
@@ -25,7 +25,7 @@ Optional extras that can be added to `APPS`:
 
 | App | Description |
 |---|---|
-| Electricity | 24h Nord Pool hourly spot price bar chart from [Elering Dashboard API](https://dashboard.elering.ee) (FI/SE/NO/DK/EE/LV/LT), configurable spot VAT plus VAT-inclusive tax / transfer / margin adders |
+| Electricity | 24h Nord Pool hourly spot price bar chart from [Elering Dashboard API](https://dashboard.elering.ee) (FI/SE/NO/DK/EE/LV/LT), optional tomorrow view on a shared detail GPIO, configurable spot VAT plus VAT-inclusive tax / transfer / margin adders |
 | Torus demo | Animated 3D spinning torus; the original show-off demo |
 
 If no GPIO is pulled low the first entry in `APPS` (default: weather) runs.
@@ -375,13 +375,15 @@ the firmware. The window title shows which font is active.
 | `b` | Pull the GPIO for `APPS[1]` low → run the 2nd app |
 | `c` | Pull the GPIO for `APPS[2]` low → run the 3rd app |
 | `d` | Pull the GPIO for `APPS[3]` low → run the 4th app (if present) |
-| `n` | Cycle news detail switch through its three positions (full / summary / RSVP) |
+| `n` | Cycle the selected app's configured local-detail switch |
 | `o` / `p` | Raise / lower the simulated speed potentiometer (ADC on GPIO 26) |
 | `ESC` | Release all pins → run `APPS[0]` as default |
 
 Pressing a mode key latches that mode until `ESC` is pressed, mirroring a
-physical sliding switch.  `n` cycles news reading mode independently of the
-active app.
+physical sliding switch. `n` follows the selected app's configured detail GPIOs:
+it does nothing for apps with no detail pins, toggles high/low for one detail
+GPIO, and keeps the three-position cycle for two detail GPIOs. The window title
+shows the actual configured GPIO numbers and their current high/low state.
 
 ---
 
@@ -438,10 +440,16 @@ your latitude" (rough guide: 5 at 60°N, 6 at 55°N, 3 at 70°N).
 ### Electricity spot price
 
 Displays today's hourly Nord Pool day-ahead electricity price as a 24-bar chart.
+If the app entry includes `modes={"default": "today", <gpio>: "tomorrow"}`,
+pulling that detail GPIO low switches to tomorrow's chart after Nord Pool day-
+ahead prices have been published. Before that, the chart area shows a
+`No SPOT data for tomorrow yet, update at HH:MM local` hint.
+
 Bars below `ELEC_CHEAP_CKWH` are dark grey, bars from `ELEC_CHEAP_CKWH` up to
 `ELEC_EXPENSIVE_CKWH` are light grey, and bars above `ELEC_EXPENSIVE_CKWH` are
-white. The current hour is marked with a tick above its bar; the footer shows
-current / min / max c/kWh.
+white. In today's view the current hour is marked with a tick above its bar and
+the footer shows now / min / max c/kWh. In tomorrow view the footer shows
+avg / min / max c/kWh.
 
 Set `ELEC_SHOW_TOTAL = True` to display a consumer-facing total price. The app
 applies `ELEC_VAT_PCT` to the raw Nord Pool spot price, then adds
@@ -450,6 +458,11 @@ Those three adders should already include VAT, because that is how they are
 normally announced to consumers. Set any component to 0 to leave it out.
 Supports all Elering dashboard price areas (FI / SE1-4 / NO1-5 / DK1-2 / EE /
 LV / LT).
+
+The cache logic is day-aware rather than interval-based: it fetches when
+today's local data is missing, and after `ELEC_TOMORROW_RELEASE_HOUR` /
+`ELEC_TOMORROW_RELEASE_MINUTE` it also refetches if tomorrow is still missing.
+Partial tomorrow payloads are rejected so they do not overwrite a good cache.
 
 ### Torus (legacy demo)
 
@@ -465,8 +478,9 @@ to enable.
 
 ## Configuring apps
 
-Which apps run, which GPIO each maps to, and how the news reader interprets
-its detail-switch pins are all declared in `config.py` as the `APPS` list.
+Which apps run, which GPIO each maps to, and how apps with local detail modes
+interpret their secondary switch pins are all declared in `config.py` as the
+`APPS` list.
 Each entry is a tuple:
 
 ```python
@@ -474,7 +488,7 @@ APPS = [
     ("weather", 10),
     ("news",    12, {"modes": {"default": "summary", 13: "full", 14: "rsvp"}}),
     ("sky",     11),
-    # ("electricity", 15),
+    # ("electricity", 15, {"modes": {"default": "today", 13: "tomorrow"}}),
     # ("torus",       11),
 ]
 ```
@@ -486,6 +500,10 @@ APPS = [
   `"default"` as the mode shown when no mapped pin is low.  Omit the integer
   keys entirely (e.g. `{"default": "full"}`) to lock news to one mode and free
   up those GPIOs.
+- Electricity uses the same `modes` pattern. For example,
+  `{"default": "today", 13: "tomorrow"}` reuses the same secondary switch
+  style as news. If electricity has no integer GPIO keys, it ignores detail
+  GPIOs entirely and stays on its default view.
 
 ---
 
@@ -586,14 +604,16 @@ ELEC_MARGIN_CKWH      = 0.59      # already VAT-inclusive
 ELEC_CHEAP_CKWH       = 15.0      # below -> dark grey bar
 ELEC_EXPENSIVE_CKWH   = 25.0      # above -> white bar
 ELEC_DRAW_THRESHOLDS  = True      # draw horizontal rule lines at thresholds
-ELEC_INTERVAL         = 60 * 60   # fetch interval (seconds)
+ELEC_TOMORROW_RELEASE_HOUR   = 14
+ELEC_TOMORROW_RELEASE_MINUTE = 30
 ```
 
 When `ELEC_SHOW_TOTAL` is True, `ELEC_VAT_PCT` is applied only to the raw spot
 price. `ELEC_TAX_CKWH`, `ELEC_TRANSFER_CKWH`, and `ELEC_MARGIN_CKWH` must
 already include VAT, because those are typically quoted to consumers as final
 c/kWh adders. Prices come from [Elering](https://dashboard.elering.ee) (no
-auth required).
+auth required). `ELEC_TOMORROW_RELEASE_*` controls when the app starts trying
+to fetch tomorrow's chart and what time is shown in the pre-release hint.
 
 ---
 
