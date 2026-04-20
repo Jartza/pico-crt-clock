@@ -80,6 +80,7 @@ class _SoftReset(BaseException):
     pass
 
 _did_soft_reset = False
+_mem32_words = {}
 
 def _soft_reset():
     global _did_soft_reset
@@ -119,9 +120,16 @@ class _ADC:
     def read_u16(self):
         return _gfx._adc_value
 
+class _Mem32:
+    def __getitem__(self, addr):
+        return _mem32_words.get(addr, 0)
+    def __setitem__(self, addr, value):
+        _mem32_words[addr] = value & 0xFFFF_FFFF
+
 machine               = types.ModuleType('machine')
 machine.Pin           = _Pin
 machine.ADC           = _ADC
+machine.mem32         = _Mem32()
 machine.PWRON_RESET   = 1
 machine.WDT_RESET     = 3
 machine.reset_cause   = _reset_cause
