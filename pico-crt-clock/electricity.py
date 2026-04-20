@@ -132,7 +132,12 @@ def _load_price_views_from(filename):
 
 
 def _has_full_day(prices):
-    return prices is not None and len(prices) >= 24
+    if prices is None or len(prices) != 24:
+        return False
+    for hour in range(24):
+        if hour not in prices:
+            return False
+    return True
 
 
 def _tomorrow_release_passed(now=None):
@@ -161,7 +166,11 @@ def _need_price_fetch(prices_today, prices_tomorrow, now=None):
 def _normalize_price_views(prices_today, prices_tomorrow, now=None):
     if now is None:
         now = time.time()
-    if _tomorrow_release_passed(now) and not _has_full_day(prices_tomorrow):
+    # Hide any partial "tomorrow" rows. Around midnight the API window can
+    # legitimately contain the next day's 00:00 interval before the full
+    # day-ahead set has been published, and showing that as a one-bar chart is
+    # misleading.
+    if not _has_full_day(prices_tomorrow):
         prices_tomorrow = None
     return prices_today, prices_tomorrow
 
@@ -194,7 +203,9 @@ def _fetch_prices():
         local_midnight_utc = now + off_sec - (lt[3] * 3600 + lt[4] * 60 + lt[5])
         local_midnight_utc -= off_sec   # convert back to UTC epoch
         start_iso = _iso_z(local_midnight_utc)
-        end_iso   = _iso_z(local_midnight_utc + 2 * 86400)
+        # Keep the end just before the following midnight so an inclusive API
+        # endpoint cannot leak a stray 00:00 row for the day after tomorrow.
+        end_iso   = _iso_z(local_midnight_utc + 2 * 86400 - 1)
         url = "https://dashboard.elering.ee/api/nps/price?start={}&end={}".format(
             start_iso, end_iso)
         stream_get(url, PRICE_TMP)
