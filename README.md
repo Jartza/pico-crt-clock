@@ -34,9 +34,31 @@ If no GPIO is pulled low the first entry in `APPS` (default: weather) runs.
 
 ## Gallery
 
-| CRT display | PC simulator |
-|---|---|
-| ![Clock running on a small CRT TV](img/small_crt.jpg) | ![PC simulator screenshot](img/sim_screen.png) |
+Real hardware:
+
+![Clock running on a small CRT TV](img/small_crt.jpg)
+
+Simulator captures:
+
+<table>
+  <tr>
+    <td align="center"><strong>Weather</strong><br><img src="img/sim_weather.png" width="256" alt="Weather app simulator capture"></td>
+    <td align="center"><strong>News: summary</strong><br><img src="img/sim_news_summary.png" width="256" alt="News summary simulator capture"></td>
+    <td align="center"><strong>News: full</strong><br><img src="img/sim_news_full.png" width="256" alt="News full article simulator capture"></td>
+  </tr>
+  <tr>
+    <td align="center"><strong>News: RSVP</strong><br><img src="img/sim_news_rsvp.png" width="256" alt="News RSVP simulator capture"></td>
+    <td align="center"><strong>Sky</strong><br><img src="img/sim_sky.png" width="256" alt="Sky app simulator capture"></td>
+    <td align="center"><strong>Electricity: today</strong><br><img src="img/sim_electricity_today.png" width="256" alt="Electricity today simulator capture"></td>
+  </tr>
+  <tr>
+    <td align="center"><strong>Electricity: tomorrow</strong><br><img src="img/sim_electricity_tomorrow.png" width="256" alt="Electricity tomorrow simulator capture"></td>
+    <td align="center"><strong>Torus</strong><br><img src="img/sim_torus.png" width="256" alt="Torus simulator capture"></td>
+    <td></td>
+  </tr>
+</table>
+
+The simulator images above are 3x nearest-neighbour captures of the 256x192 framebuffer, so they stay readable on GitHub without looking blurred.
 
 https://github.com/user-attachments/assets/1162584c-b029-4f1c-9379-bf67870d685d
 
