@@ -1,6 +1,7 @@
 import json
 import gc
 import os
+import machine
 try:
     from config_local import *
 except ImportError:
@@ -10,6 +11,8 @@ from common import *
 
 ELEC_DIR    = 'eleccache'
 PRICE_CACHE = ELEC_DIR + '/prices.json'
+PRICE_TMP   = ELEC_DIR + '/prices.tmp'
+RETRY_MS    = 5 * 60 * 1000
 
 # Layout: treat the screen as a 224 x 176 safe area centred in 256 x 192.
 # Everything sits inside x=16..240 and y=8..184 so the screensaver can drift
@@ -37,11 +40,29 @@ COL_EXPENSIVE = 15    # WHITE
 COL_GRID      = 6
 COL_NOW       = 15
 
+MODE_TODAY    = 0
+MODE_TOMORROW = 1
+
+_MODE_NAME_TO_CONST = {
+    "today": MODE_TODAY,
+    "tomorrow": MODE_TOMORROW,
+}
+
 wlan = None
 # Reuse tiled chart buffers because RP2040 gfx.blit() only cares that
 # sw*sh stays within the 4 kB native blit buffer, and the MicroPython build
 # runs with tight heap margins.
 _chart_tiles = tuple(bytearray(w * CHART_TILE_H) for w in CHART_TILE_WIDTHS)
+
+try:
+    ELEC_TOMORROW_RELEASE_HOUR
+except NameError:
+    ELEC_TOMORROW_RELEASE_HOUR = 14
+
+try:
+    ELEC_TOMORROW_RELEASE_MINUTE
+except NameError:
+    ELEC_TOMORROW_RELEASE_MINUTE = 30
 
 
 def _iso_z(epoch):
@@ -61,12 +82,13 @@ def _apply_markup(spot_ckwh):
         return spot_ckwh
     return (spot_ckwh * (1 + ELEC_VAT_PCT / 100)) + ELEC_TAX_CKWH + ELEC_TRANSFER_CKWH + ELEC_MARGIN_CKWH
 
-def _load_prices():
-    """Return dict mapping local-hour-of-day-str -> c/kWh for today, or None
-    on failure.  Keys are 0-23 as ints (local hour index).
-    If the source provides sub-hour intervals, average them per local hour."""
+def _load_prices(day_offset=0, filename=PRICE_CACHE):
+    """Return dict mapping local-hour -> c/kWh for the requested local day.
+
+    day_offset=0 loads today, day_offset=1 loads tomorrow. If the source
+    provides sub-hour intervals, average them per local hour."""
     try:
-        with open(PRICE_CACHE) as f:
+        with open(filename) as f:
             payload = json.load(f)
     except Exception:
         return None
@@ -76,7 +98,9 @@ def _load_prices():
     now     = time.time()
     off_sec = _utc_offset(now)
     lt      = time.localtime(now + off_sec)
-    today_key = (lt[0], lt[1], lt[2])
+    day_start = now + off_sec - (lt[3] * 3600 + lt[4] * 60 + lt[5]) + (day_offset * 86400)
+    day_t     = time.gmtime(day_start)
+    today_key = (day_t[0], day_t[1], day_t[2])
     sums = {}
     counts = {}
     for row in rows:
@@ -99,6 +123,61 @@ def _load_prices():
     return out if out else None
 
 
+def _load_price_views():
+    return _load_prices(0), _load_prices(1)
+
+
+def _load_price_views_from(filename):
+    return _load_prices(0, filename), _load_prices(1, filename)
+
+
+def _has_full_day(prices):
+    return prices is not None and len(prices) >= 24
+
+
+def _tomorrow_release_passed(now=None):
+    if now is None:
+        now = time.time()
+    off_sec = _utc_offset(now)
+    lt      = time.localtime(now + off_sec)
+    return (lt[3], lt[4]) >= (ELEC_TOMORROW_RELEASE_HOUR, ELEC_TOMORROW_RELEASE_MINUTE)
+
+
+def _tomorrow_release_label():
+    return "{:02d}:{:02d}".format(ELEC_TOMORROW_RELEASE_HOUR, ELEC_TOMORROW_RELEASE_MINUTE)
+
+
+def _need_price_fetch(prices_today, prices_tomorrow, now=None):
+    if now is None:
+        now = time.time()
+    cur_hr = time.localtime(now + _utc_offset(now))[3]
+    if prices_today is None or cur_hr not in prices_today:
+        return True
+    if not _has_full_day(prices_tomorrow) and _tomorrow_release_passed(now):
+        return True
+    return False
+
+
+def _normalize_price_views(prices_today, prices_tomorrow, now=None):
+    if now is None:
+        now = time.time()
+    if _tomorrow_release_passed(now) and not _has_full_day(prices_tomorrow):
+        prices_tomorrow = None
+    return prices_today, prices_tomorrow
+
+
+def _check_detail_swap(detail_pin, counter, expected):
+    """Return (swap, counter, expected) for the electricity detail pin."""
+    if detail_pin is None:
+        return False, 0, expected
+    active, counter = check_pin_stable(detail_pin, expected, counter)
+    if active:
+        return False, counter, expected
+    expected = detail_pin.value()
+    counter = 0
+    return True, counter, expected
+
+
 def _fetch_prices():
     reconnect_wifi(wlan)
     gc.collect()
@@ -118,10 +197,32 @@ def _fetch_prices():
         end_iso   = _iso_z(local_midnight_utc + 2 * 86400)
         url = "https://dashboard.elering.ee/api/nps/price?start={}&end={}".format(
             start_iso, end_iso)
-        stream_get(url, PRICE_CACHE)
+        stream_get(url, PRICE_TMP)
+        prices_today, prices_tomorrow = _load_price_views_from(PRICE_TMP)
+        if prices_today is None:
+            try:
+                os.remove(PRICE_TMP)
+            except OSError:
+                pass
+            return None
+        if _tomorrow_release_passed(now) and not _has_full_day(prices_tomorrow):
+            try:
+                os.remove(PRICE_TMP)
+            except OSError:
+                pass
+            return None
+        try:
+            os.remove(PRICE_CACHE)
+        except OSError:
+            pass
+        os.rename(PRICE_TMP, PRICE_CACHE)
         gc.collect()
-        return _load_prices()
+        return prices_today
     except Exception:
+        try:
+            os.remove(PRICE_TMP)
+        except OSError:
+            pass
         return None
 
 
@@ -178,6 +279,7 @@ def _build_chart_cache(prices, cur_hour, chart_tiles):
             'min_p': 0.0,
             'max_p': 0.0,
             'cur_p': None,
+            'avg_p': None,
         }
 
     min_p = None
@@ -231,10 +333,11 @@ def _build_chart_cache(prices, cur_hour, chart_tiles):
         'min_p': min_p,
         'max_p': max_p,
         'cur_p': prices.get(cur_hour),
+        'avg_p': sum(prices.values()) / len(prices),
     }
 
 
-def _draw_all(ox, oy, t_str, d_str, prices, cur_hour, chart_state):
+def _draw_all(ox, oy, t_str, d_str, prices, cur_hour, chart_state, view_mode):
     gfx.cls(BLACK)
     gfx.print_string_2x((256 - len(t_str) * 16) // 2 + ox, TIME_Y + oy,
                         t_str, BLACK, WHITE)
@@ -251,34 +354,50 @@ def _draw_all(ox, oy, t_str, d_str, prices, cur_hour, chart_state):
         min_p = chart_state['min_p']
         max_p = chart_state['max_p']
         cur_p = chart_state['cur_p']
+        avg_p = chart_state['avg_p']
     else:
-        msg = "no price data"
-        x   = SAFE_X + (224 - len(msg) * 8) // 2 + ox
-        gfx.print_string(x, CHART_Y + CHART_H // 2 - 4 + oy,
-                         msg, BLACK, COL_GRID)
+        if view_mode == MODE_TOMORROW and not _tomorrow_release_passed():
+            msg1 = "No SPOT data for"
+            msg2 = "tomorrow yet"
+            msg3 = "update at {} local".format(_tomorrow_release_label())
+            gfx.print_string(SAFE_X + (224 - len(msg1) * 8) // 2 + ox,
+                             CHART_Y + CHART_H // 2 - 12 + oy,
+                             msg1, BLACK, COL_GRID)
+            gfx.print_string(SAFE_X + (224 - len(msg2) * 8) // 2 + ox,
+                             CHART_Y + CHART_H // 2 - 2 + oy,
+                             msg2, BLACK, COL_GRID)
+            gfx.print_string(SAFE_X + (224 - len(msg3) * 8) // 2 + ox,
+                             CHART_Y + CHART_H // 2 + 8 + oy,
+                             msg3, BLACK, COL_GRID)
+        else:
+            msg = "no price data"
+            x   = SAFE_X + (224 - len(msg) * 8) // 2 + ox
+            gfx.print_string(x, CHART_Y + CHART_H // 2 - 4 + oy,
+                             msg, BLACK, COL_GRID)
         min_p = 0.0
         max_p = 0.0
         cur_p = None
+        avg_p = None
 
     if prices:
-        # Line 1: now / min / max.  28 chars at worst (two-digit values) fits
-        # the 224 px safe width exactly.
         bits = []
-        if cur_p is not None:
+        if view_mode == MODE_TODAY and cur_p is not None:
             bits.append("now {:.1f}".format(cur_p))
+        elif avg_p is not None:
+            bits.append("avg {:.1f}".format(avg_p))
         bits.append("min {:.1f}".format(min_p))
         bits.append("max {:.1f}".format(max_p))
         gfx.print_string(SAFE_X + ox, FOOTER_Y + oy,
                          "  ".join(bits), BLACK, WHITE)
 
-        # Line 2: area + markup tag.
         tag = "all inc" if ELEC_SHOW_TOTAL else "raw spot"
-        line2 = "{}  {}  c/kWh".format(ELEC_AREA, tag)
+        day_tag = "today" if view_mode == MODE_TODAY else "tomorrow"
+        line2 = "{}  {}  {}".format(ELEC_AREA, day_tag, tag)
         gfx.print_string(SAFE_X + ox, FOOTER_Y + 10 + oy,
                          line2, BLACK, COL_MID)
 
 
-def run(pin=None):
+def run(pin=None, modes=None):
     global wlan, _chart_tiles
 
     gfx.init()
@@ -299,13 +418,25 @@ def run(pin=None):
     # Day-ahead prices publish once per day and never change during the day,
     # so we only refetch when the cache is missing the current local hour -
     # i.e. the cache is from a previous day (or empty on first boot).
-    cur_hr_now = time.localtime(time.time() + _utc_offset(time.time()))[3]
-    prices     = _load_prices()
-    if prices is None or cur_hr_now not in prices:
+    now = time.time()
+    prices_today, prices_tomorrow = _load_price_views()
+    prices_today, prices_tomorrow = _normalize_price_views(prices_today, prices_tomorrow, now)
+    if _need_price_fetch(prices_today, prices_tomorrow, now):
         if _fetch_escape_wait(pin):
             return
-        prices = _fetch_prices()
+        _fetch_prices()
+        prices_today, prices_tomorrow = _load_price_views()
+        prices_today, prices_tomorrow = _normalize_price_views(prices_today, prices_tomorrow, now)
     gc.collect()
+
+    if modes is None:
+        modes = {"default": "today", 13: "tomorrow"}
+    default_mode = _MODE_NAME_TO_CONST[modes.get("default", "today")]
+    detail_gpios = sorted(k for k, v in modes.items()
+                          if isinstance(k, int) and _MODE_NAME_TO_CONST.get(v) == MODE_TOMORROW)
+    detail_pin = machine.Pin(detail_gpios[0], machine.Pin.IN, machine.Pin.PULL_UP) if detail_gpios else None
+    detail_expected = detail_pin.value() if detail_pin is not None else 1
+    detail_counter = 0
 
     ox, oy   = 0, 0
     vx, vy   = 1, 1
@@ -313,27 +444,49 @@ def run(pin=None):
     last_hr  = -1
     last_mv  = time.ticks_ms()
     pincnt   = 0
+    last_mode = None
     chart_key = None
     chart_state = None
+    retry_at = None
 
     while True:
         active, pincnt = check_pin_stable(pin, 0, pincnt)
         if not active:
             return
 
+        swap, detail_counter, detail_expected = _check_detail_swap(
+            detail_pin, detail_counter, detail_expected)
+
         now = time.time()
         t   = time.localtime(now + _utc_offset(now))
         yr, mo, dy = t[0], t[1], t[2]
         hr, mi, se = t[3], t[4], t[5]
-        new_chart_key = (yr, mo, dy, hr)
+        if _has_full_day(prices_tomorrow):
+            retry_at = None
+        elif _tomorrow_release_passed(now):
+            if retry_at is None:
+                retry_at = time.ticks_add(time.ticks_ms(), RETRY_MS)
+        view_mode = MODE_TOMORROW if detail_pin is not None and detail_expected == 0 else default_mode
+        if view_mode != last_mode:
+            last_mode = view_mode
+            chart_key = None
+            last_s = -1
+            if view_mode == MODE_TOMORROW and prices_tomorrow is None:
+                prices_today, prices_tomorrow = _load_price_views()
+                prices_today, prices_tomorrow = _normalize_price_views(prices_today, prices_tomorrow, now)
+
+        prices = prices_today if view_mode == MODE_TODAY else prices_tomorrow
+        chart_hour = hr if view_mode == MODE_TODAY else -1
+        new_chart_key = (yr, mo, dy, hr, view_mode)
         if chart_state is None or new_chart_key != chart_key:
             chart_key = new_chart_key
-            chart_meta = _build_chart_cache(prices, hr, _chart_tiles)
+            chart_meta = _build_chart_cache(prices, chart_hour, _chart_tiles)
             chart_state = {
                 'chart_tiles': _chart_tiles,
                 'min_p': chart_meta['min_p'],
                 'max_p': chart_meta['max_p'],
                 'cur_p': chart_meta['cur_p'],
+                'avg_p': chart_meta['avg_p'],
             }
 
         if se != last_s:
@@ -346,7 +499,7 @@ def run(pin=None):
                 t_str = "{:02d}:{:02d}:{:02d}".format(hr, mi, se)
             dp = {'D': str(dy), 'M': str(mo), 'Y': str(yr)}
             d_str = DATE_SEP.join(dp[c] for c in DATE_ORDER)
-            _draw_all(ox, oy, t_str, d_str, prices, hr, chart_state)
+            _draw_all(ox, oy, t_str, d_str, prices, chart_hour, chart_state, view_mode)
 
         ss_speed = (read_speed_adc() >> 3) if USE_ADC_SPEED else SCREENSAVER_SPEED
         if ss_speed < 999 and time.ticks_diff(time.ticks_ms(), last_mv) >= (ss_speed * 50):
@@ -365,18 +518,33 @@ def run(pin=None):
         # only hit the network if the new hour really isn't in our data.
         if hr != last_hr:
             last_hr = hr
-            if prices is None or hr not in prices:
-                fresh = _load_prices()
-                if fresh and hr in fresh:
-                    prices = fresh
-                    gc.collect()
-                else:
-                    if _fetch_escape_wait(pin):
-                        return
-                    new_prices = _fetch_prices()
-                    if new_prices:
-                        prices = new_prices
-                        gc.collect()
+            prices_today, prices_tomorrow = _load_price_views()
+            prices_today, prices_tomorrow = _normalize_price_views(prices_today, prices_tomorrow, now)
+
+            if _need_price_fetch(prices_today, prices_tomorrow, now):
+                if _fetch_escape_wait(pin):
+                    return
+                _fetch_prices()
+                prices_today, prices_tomorrow = _load_price_views()
+                prices_today, prices_tomorrow = _normalize_price_views(prices_today, prices_tomorrow, now)
+                gc.collect()
+
+            if swap:
+                detail_counter = 0
+            chart_key = None
+            last_s = -1
+
+        if retry_at is not None and time.ticks_diff(time.ticks_ms(), retry_at) >= 0:
+            prices_today, prices_tomorrow = _load_price_views()
+            prices_today, prices_tomorrow = _normalize_price_views(prices_today, prices_tomorrow, now)
+            retry_at = None
+            if prices_tomorrow is None and _tomorrow_release_passed(now):
+                if _fetch_escape_wait(pin):
+                    return
+                _fetch_prices()
+                prices_today, prices_tomorrow = _load_price_views()
+                prices_today, prices_tomorrow = _normalize_price_views(prices_today, prices_tomorrow, now)
+                gc.collect()
                 chart_key = None
                 last_s = -1
 

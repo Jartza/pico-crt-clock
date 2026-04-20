@@ -98,6 +98,10 @@ USE_ADC_SPEED = False
 # pin is pulled low.  Valid modes are "full", "summary", "rsvp".  Wire any
 # subset of pins - e.g. {"default": "full"} with no GPIO keys locks news to
 # full-article mode and needs no detail switch.
+#
+# The electricity app also accepts a "modes" dict. Use one shared detail GPIO
+# to switch between {"default": "today", 13: "tomorrow"} if you want the same
+# secondary switch style as news.
 APPS = [
     ("weather", 10),
     ("news",    12, {"modes": {"default": "summary", 13: "full", 14: "rsvp"}}),
@@ -134,3 +138,7 @@ ELEC_CHEAP_CKWH       = 15.0
 ELEC_EXPENSIVE_CKWH   = 25.0
 # Draw horizontal rule lines at the threshold levels
 ELEC_DRAW_THRESHOLDS  = True
+# Local release time for the next day's Nord Pool prices. Once this time has
+# passed, electricity.py will refetch if tomorrow is still missing.
+ELEC_TOMORROW_RELEASE_HOUR   = 14
+ELEC_TOMORROW_RELEASE_MINUTE = 30
