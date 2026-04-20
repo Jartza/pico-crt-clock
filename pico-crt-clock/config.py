@@ -99,14 +99,14 @@ USE_ADC_SPEED = False
 # subset of pins - e.g. {"default": "full"} with no GPIO keys locks news to
 # full-article mode and needs no detail switch.
 #
-# The electricity app also accepts a "modes" dict. Use one shared detail GPIO
-# to switch between {"default": "today", 13: "tomorrow"} if you want the same
-# secondary switch style as news.
+# The electricity app also accepts a "modes" dict. If omitted, electricity
+# ignores any detail GPIOs and stays on its default view. To share the same
+# secondary switch style as news, use {"default": "today", 13: "tomorrow"}.
 APPS = [
     ("weather", 10),
     ("news",    12, {"modes": {"default": "summary", 13: "full", 14: "rsvp"}}),
     ("sky",     11),
-    # ("electricity", 15),          # uncomment and wire a 4th switch position to enable
+    # ("electricity", 15, {"modes": {"default": "today", 13: "tomorrow"}}),
     # ("torus",       11),          # legacy 3D demo; swap for "sky" above if wanted
 ]
 

@@ -264,16 +264,17 @@ _border_colour = 0
 # how many of the early pins belong to main.py's mode-select dispatch and how
 # many trailing pins belong to the running app (e.g. news's detail switch).
 # Keys a/b/c/d switch modes exclusively (one low at a time); ESC = all high.
-# Key n cycles the news detail switch through its 3 positions, driving the
-# first two app-level sim pins accordingly.
+# Key n cycles the selected app's local-detail switch through its configured
+# positions, driving up to two app-level sim pins accordingly.
 # Detail mode persists across soft-resets via _detail_mode.
 _sim_pins        = []
 _mode_pin_count  = 3      # overridden by run_sim.py based on len(APPS)
 _desired_mode    = 0      # persists across sim reboots; updated by _set_gpio_mode
-_detail_mode     = 1      # 0=full, 1=summary, 2=rsvp (default: summary)
+_detail_mode     = 0      # all configured detail pins high
+_detail_gpios    = ()
+_app_detail_gpios = ()
 _adc_value       = 32768  # simulated ADC raw value 0-65535; o=raise, p=lower (step 2048)
 
-_DETAIL_LABELS = ("full news", "summary", "RSVP")
 _MODE_KEYS     = "abcd"   # first N letters map to APPS[0..N-1]
 
 class _SimPin:
@@ -295,32 +296,62 @@ def _set_gpio_mode(idx):
     if 0 <= idx and idx >= _mode_pin_count:
         return   # key pressed beyond the configured app count; ignore
     _desired_mode = idx
+    _select_detail_gpios(idx)
     for i, p in enumerate(_sim_pins[:_mode_pin_count]):
         p._low = (i == idx)
     _update_caption()
 
+def _detail_state_count():
+    if len(_detail_gpios) >= 2:
+        return 3
+    if len(_detail_gpios) == 1:
+        return 2
+    return 1
+
+def _detail_label():
+    if not _detail_gpios:
+        return ""
+    bits = []
+    for i, gpio in enumerate(_detail_gpios):
+        low = ((_detail_mode == 1 and i == 0) or
+               (_detail_mode == 2 and i == 1))
+        bits.append("{}:{}".format(gpio, 0 if low else 1))
+    return " ".join(bits)
+
+def _select_detail_gpios(idx):
+    global _detail_gpios, _detail_mode
+    if not _app_detail_gpios:
+        _detail_gpios = ()
+        _detail_mode = 0
+        return
+    sel = 0 if idx < 0 or idx >= len(_app_detail_gpios) else idx
+    _detail_gpios = _app_detail_gpios[sel]
+    _detail_mode %= _detail_state_count()
+    _apply_detail()
+
 def _apply_detail():
-    """Drive the two app-level detail pins (first pins after the mode pins)
-    based on _detail_mode.  Mode 0 (full) = both pins' low-states off; modes
-    1 and 2 drive the corresponding single pin low.  Which mode each pin
-    activates is defined by the news app's config; the sim just toggles
-    detail_mode and lets news interpret the pin pattern."""
+    """Drive up to two app-level detail pins based on the selected app config.
+    Mode 0 = all configured detail pins high; modes 1/2 pull the first/second
+    configured detail pin low."""
     a = _mode_pin_count
     if len(_sim_pins) > a:
-        _sim_pins[a]._low = (_detail_mode == 1)
+        _sim_pins[a]._low = (len(_detail_gpios) >= 1 and _detail_mode == 1)
     if len(_sim_pins) > a + 1:
-        _sim_pins[a + 1]._low = (_detail_mode == 2)
+        _sim_pins[a + 1]._low = (len(_detail_gpios) >= 2 and _detail_mode == 2)
 
 def _cycle_detail():
-    """Advance the 3-position news switch: full -> summary -> rsvp -> full."""
+    """Advance the configured local-detail switch for the selected app."""
     global _detail_mode
-    _detail_mode = (_detail_mode + 1) % 3
+    states = _detail_state_count()
+    if states <= 1:
+        return
+    _detail_mode = (_detail_mode + 1) % states
     _apply_detail()
     _update_caption()
 
 def _reset_detail():
     global _detail_mode
-    _detail_mode = 1
+    _detail_mode = 0
     _apply_detail()
     _update_caption()
 
@@ -333,8 +364,9 @@ def _update_caption():
     adc_disp = f"  o/p=ADC:{_adc_value >> 8}"
     if _sim_pins:
         hints = "  ".join(f"{_MODE_KEYS[i]}=mode {i}" for i in range(n_mode))
-        if len(_sim_pins) > _mode_pin_count:
-            hints += f"  n={_DETAIL_LABELS[_detail_mode]}"
+        detail_label = _detail_label()
+        if detail_label:
+            hints += f"  n={detail_label}"
         mode  = f"mode {active}" if active is not None else "default"
         caption = f"pico-crt-clock sim [{font_tag}]  |  {hints}  ESC=default  [{mode}]{adc_disp}"
     else:

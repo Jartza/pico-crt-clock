@@ -430,7 +430,7 @@ def run(pin=None, modes=None):
     gc.collect()
 
     if modes is None:
-        modes = {"default": "today", 13: "tomorrow"}
+        modes = {"default": "today"}
     default_mode = _MODE_NAME_TO_CONST[modes.get("default", "today")]
     detail_gpios = sorted(k for k, v in modes.items()
                           if isinstance(k, int) and _MODE_NAME_TO_CONST.get(v) == MODE_TOMORROW)

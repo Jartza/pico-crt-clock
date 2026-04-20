@@ -9,7 +9,7 @@ Options:
 
 GPIO simulation (switches between modes):
   a/b/c/d pull the GPIO for APPS entry 0/1/2/3 low (first 4 entries, in order)
-  n       cycle news detail switch through its configured positions
+  n       cycle the selected app's local-detail switch through its configured positions
   ESC     release all pins -> default mode (APPS[0] with no switch)
 
   Pressing a key latches that mode until ESC is pressed, mirroring a physical
@@ -102,9 +102,9 @@ class _Pin:
             if idx == _gfx._desired_mode:
                 self._sim._low = True   # restore mode pin that was active before reboot
         elif idx == N:
-            self._sim._low = (_gfx._detail_mode == 1)   # first detail pin - summary position
+            self._sim._low = (len(_gfx._detail_gpios) >= 1 and _gfx._detail_mode == 1)
         elif idx == N + 1:
-            self._sim._low = (_gfx._detail_mode == 2)   # second detail pin - rsvp position
+            self._sim._low = (len(_gfx._detail_gpios) >= 2 and _gfx._detail_mode == 2)
         _gfx._sim_pins.append(self._sim)
         _gfx._update_caption()
 
@@ -177,6 +177,15 @@ try:
 except ImportError:
     from config import APPS as _APPS
 _gfx._mode_pin_count = len(_APPS)
+
+def _detail_gpios_for(entry):
+    extras = entry[2] if len(entry) > 2 else {}
+    modes = extras.get("modes", {})
+    gpios = sorted(k for k in modes if isinstance(k, int))
+    return tuple(gpios[:2])
+
+_gfx._app_detail_gpios = tuple(_detail_gpios_for(entry) for entry in _APPS)
+_gfx._select_detail_gpios(_gfx._desired_mode)
 
 # Modules to clear on each soft_reset so they re-import fresh.
 _APP_MODULES = {
