@@ -116,11 +116,12 @@ SKY_AURORA_KP_VISIBLE = 5
 # --- electricity ---
 # Nord Pool price area: fi, ee, lv, lt, se1..se4, no1..no5, dk1, dk2
 ELEC_AREA             = "fi"
-# True = include VAT + tax + transfer in displayed price; False = raw spot only.
+# True = show consumer total price; False = raw spot only.
 ELEC_SHOW_TOTAL       = True
-# These only apply when ELEC_SHOW_TOTAL is True.  Set any to 0 to skip it.
-# Note: VAT is applied to electricity price, but electrcicity tax should
-# be listed with VAT, as well as the margin and transfer fees.
+# These only apply when ELEC_SHOW_TOTAL is True. Set any to 0 to skip it.
+# ELEC_VAT_PCT is applied to the raw spot component only. Electricity tax,
+# transfer, and margin should already include VAT, as that is how they are
+# normally announced to consumers.
 # In April 2026, Finnish VAT is 25.5%, electricity tax is 2.92 c/kWh (incl VAT),
 # Caruna transfer fee is 5.26 c/kWh (incl VAT)
 ELEC_VAT_PCT          = 25.5

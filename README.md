@@ -25,7 +25,7 @@ Optional extras that can be added to `APPS`:
 
 | App | Description |
 |---|---|
-| Electricity | 24h Nord Pool hourly spot price bar chart from [Elering Dashboard API](https://dashboard.elering.ee) (FI/SE/NO/DK/EE/LV/LT), configurable VAT + tax + transfer |
+| Electricity | 24h Nord Pool hourly spot price bar chart from [Elering Dashboard API](https://dashboard.elering.ee) (FI/SE/NO/DK/EE/LV/LT), configurable spot VAT plus VAT-inclusive tax / transfer / margin adders |
 | Torus demo | Animated 3D spinning torus; the original show-off demo |
 
 If no GPIO is pulled low the first entry in `APPS` (default: weather) runs.
@@ -181,7 +181,8 @@ pico-crt-clock/           project sources; build from here
   eleccache/                electricity price cache written to flash (auto-created)
   patches/
     micropython-no-thread.patch   disables MicroPython threading (see below)
-    pico-mposite-common.patch     pico-mposite patch applied to all variants (DMA IRQ, FIFO, SRAM, GPIO drive, deinit)
+    micropython-flash-freeze.patch keeps video stable during flash writes by freezing core1 in SRAM
+    pico-mposite-common.patch     pico-mposite patch applied to all variants (DMA IRQ, FIFO, SRAM, GPIO drive)
     pico-mposite-buffer.patch     additional patch for buffer variant (HSHI + colour LUT)
     pico-mposite-amp.patch        additional patch for amp variant (HSHI only)
     pico-mposite-fix-scanline-order.patch  fixes y=0 rendering at bottom instead of top (applied to all variants)
@@ -217,7 +218,8 @@ IRQs (`DMA_IRQ_1`, `PIO0_IRQ_0`) are owned by core1.
   `DMA_IRQ_1` (avoiding conflict with MicroPython's shared DMA_IRQ_0 handler),
   adds `FJOIN_TX` to double the TX FIFO depth on both PIO SMs, places ISRs in
   SRAM with `__not_in_flash_func`, sets GP0-GP4 drive strength to 2 mA / slow
-  slew to reduce switching noise, and adds `deinit_cvideo()`. Applied first for
+  slew to reduce switching noise, and moves the framebuffer to static SRAM.
+  Applied first for
   all variants. The variant-specific patches (`pico-mposite-buffer.patch`,
   `pico-mposite-amp.patch`) apply on top and carry only the HSHI value and
   colour LUT changes specific to that hardware.
@@ -233,9 +235,11 @@ IRQs (`DMA_IRQ_1`, `PIO0_IRQ_0`) are owned by core1.
   `multicore_launch_core1()` blocks on, hanging core0.
 - Core1 is launched with an explicit 4 KB static stack because MicroPython sets
   `PICO_CORE1_STACK_SIZE = 0`, which makes `multicore_launch_core1()` panic.
-- `multicore_lockout_victim_init()` is called on core1 so MicroPython's flash
-  write path (webREPL, USB MSC) can safely pause core1; without it the lockout
-  handshake deadlocks. DMA/PIO keep running during the lockout.
+- `patches/micropython-flash-freeze.patch` replaces the old lockout behaviour
+  during flash writes. Before `flash_range_erase/program`, core0 asks the video
+  core to park in a tiny SRAM-only wait loop; the pico-mposite IRQ path keeps
+  sync alive from SRAM while drawing pauses. The visible result is a briefly
+  static picture during cache writes instead of glitches or a black screen.
 - Back-to-back `gfx.blit()` calls are safe: core0 spins on `gfx_blit_busy`
   until core1 has consumed the previous sprite, then copies the next one.
 
@@ -277,7 +281,7 @@ Spectrum and C64 font builds can coexist without a clean in between.
 
 The script:
 1. Initialises top-level submodules (micropython, pico-mposite, pico-sdk) and MicroPython's own submodules (tinyusb, ...)
-2. Applies `patches/micropython-no-thread.patch`, `patches/pico-mposite-common.patch`, `patches/pico-mposite-fix-scanline-order.patch`, and (for `buffer`/`amp`) the variant-specific patch on top; if `--c64font` is given, also applies `patches/pico-mposite-c64font.patch`
+2. Applies `patches/micropython-no-thread.patch`, `patches/micropython-flash-freeze.patch`, `patches/pico-mposite-common.patch`, `patches/pico-mposite-fix-scanline-order.patch`, and (for `buffer`/`amp`) the variant-specific patch on top; if `--c64font` is given, also applies `patches/pico-mposite-c64font.patch`
 3. Builds `mpy-cross` if needed
 4. Runs cmake (out-of-tree into `../build-RPI_PICO_W-<variant>/` or `../build-RPI_PICO_W-<variant>-c64font/`), builds pioasm, generates `cvideo_sync.pio.h` / `cvideo_data.pio.h`
 5. Builds the full firmware with the `gfx` user C module
@@ -317,7 +321,9 @@ mpremote fs cp pico-crt-clock/common.py  :common.py
 mpremote fs cp pico-crt-clock/weather.py :weather.py
 mpremote fs cp pico-crt-clock/torus.py   :torus.py
 mpremote fs cp pico-crt-clock/news.py    :news.py
-mpremote fs cp pico-crt-clock/icons.py   :icons.py
+mpremote fs cp pico-crt-clock/sky.py     :sky.py
+mpremote fs cp pico-crt-clock/electricity.py :electricity.py
+mpremote fs cp pico-crt-clock/icons.bin  :icons.bin
 mpremote fs cp pico-crt-clock/config.py  :config.py
 ```
 
@@ -329,7 +335,7 @@ To find your coordinates, right-click your location in
 that appears at the top of the context menu — it copies to the clipboard.
 Alternatively use [latlong.net](https://www.latlong.net).
 
-If you change icons, regenerate `icons.py` on the PC first:
+If you change icons, regenerate `icons.bin` on the PC first:
 
 ```bash
 cd pico-crt-clock && python make_icons.py
@@ -414,7 +420,9 @@ You need your own Guardian Open Platform API key (free, 5000 requests/day):
 4. Do not commit your real key to Git
 
 Articles are cached to flash in `newscache/` so re-entering news mode within
-`NEWS_INTERVAL` seconds does not trigger a new fetch.
+`NEWS_INTERVAL` seconds does not trigger a new fetch. During a refresh, the
+banner shows `Fetching news...` plus a `03/16`-style counter while each article
+cache file is written.
 
 ### Sky
 
@@ -431,13 +439,16 @@ your latitude" (rough guide: 5 at 60°N, 6 at 55°N, 3 at 70°N).
 
 Displays today's hourly Nord Pool day-ahead electricity price as a 24-bar chart.
 Bars below `ELEC_CHEAP_CKWH` are light grey, above `ELEC_EXPENSIVE_CKWH` are
-white, in between are mid-grey.  The current hour is marked with a tick above
-its bar; the footer shows current / min / max / cheapest-upcoming c/kWh.
+white, in between are mid-grey. The current hour is marked with a tick above
+its bar; the footer shows current / min / max c/kWh.
 
-Set `ELEC_SHOW_TOTAL = True` to add VAT + electricity tax + transfer fee on
-top of the raw spot price (Finnish convention: VAT applies to the whole,
-including tax and transfer).  Set any component to 0 to leave it out.  Supports
-all Elering dashboard price areas (FI / SE1-4 / NO1-5 / DK1-2 / EE / LV / LT).
+Set `ELEC_SHOW_TOTAL = True` to display a consumer-facing total price. The app
+applies `ELEC_VAT_PCT` to the raw Nord Pool spot price, then adds
+`ELEC_TAX_CKWH`, `ELEC_TRANSFER_CKWH`, and `ELEC_MARGIN_CKWH` exactly as given.
+Those three adders should already include VAT, because that is how they are
+normally announced to consumers. Set any component to 0 to leave it out.
+Supports all Elering dashboard price areas (FI / SE1-4 / NO1-5 / DK1-2 / EE /
+LV / LT).
 
 ### Torus (legacy demo)
 
@@ -445,10 +456,9 @@ Real-time 3D spinning torus rendered using fixed-point arithmetic on the
 RP2040.  Not in the default `APPS` list — uncomment its line in `config.py`
 to enable.
 
-> **Note:** Flash writes briefly disrupt the composite video signal during
-> weather / news / sky / electricity fetches.  The screen blanks for a few
-> seconds — set `DEINIT_GFX_DURING_FETCH = False` in `config.py` to keep the
-> picture live at the cost of visible glitches during the cache writes.
+> **Note:** Weather / news / sky / electricity refreshes write their caches to
+> flash. During those writes the displayed frame can pause briefly, but sync is
+> kept alive and the screen does not glitch or blank.
 
 ---
 
@@ -567,29 +577,22 @@ Sun rise/set and moon phase are computed locally from `LATITUDE` /
 
 ```python
 ELEC_AREA             = "fi"      # fi/ee/lv/lt/se1..4/no1..5/dk1/dk2
-ELEC_SHOW_TOTAL       = True      # True = VAT + tax + transfer added
-                                  # False = raw spot price only
-ELEC_VAT_PCT          = 25.5      # set to 0 to skip VAT
-ELEC_TAX_CKWH         = 2.827     # set to 0 on a tax-free tariff
-ELEC_TRANSFER_CKWH    = 5.0       # set to 0 to hide transfer/margin
+ELEC_SHOW_TOTAL       = True      # True = consumer total, False = raw spot only
+ELEC_VAT_PCT          = 25.5      # applied to the raw spot component
+ELEC_TAX_CKWH         = 2.92      # already VAT-inclusive
+ELEC_TRANSFER_CKWH    = 5.26      # already VAT-inclusive
+ELEC_MARGIN_CKWH      = 0.59      # already VAT-inclusive
 ELEC_CHEAP_CKWH       = 5.0       # below -> light grey bar
 ELEC_EXPENSIVE_CKWH   = 15.0      # above -> white bar
 ELEC_DRAW_THRESHOLDS  = True      # draw horizontal rule lines at thresholds
 ELEC_INTERVAL         = 60 * 60   # fetch interval (seconds)
 ```
 
-VAT is applied to `(spot + tax + transfer)` as a whole when
-`ELEC_SHOW_TOTAL` is True, matching the Finnish convention that electricity
-tax and transfer fees are inside the VAT base.  Prices come from
-[Elering](https://dashboard.elering.ee) (no auth required).
-
-### Fetch glitch behaviour
-
-```python
-DEINIT_GFX_DURING_FETCH = True    # True = pause video during flash cache writes
-                                  # (shows "no signal" banner)
-                                  # False = keep video live, accept glitches
-```
+When `ELEC_SHOW_TOTAL` is True, `ELEC_VAT_PCT` is applied only to the raw spot
+price. `ELEC_TAX_CKWH`, `ELEC_TRANSFER_CKWH`, and `ELEC_MARGIN_CKWH` must
+already include VAT, because those are typically quoted to consumers as final
+c/kWh adders. Prices come from [Elering](https://dashboard.elering.ee) (no
+auth required).
 
 ---
 

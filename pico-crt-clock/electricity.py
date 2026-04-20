@@ -52,9 +52,11 @@ def _iso_z(epoch):
 
 
 def _apply_markup(spot_ckwh):
-    """Return displayed c/kWh given the raw spot price, applying VAT + tax +
-    transfer per the Finnish convention (VAT on everything) when ELEC_SHOW_TOTAL
-    is True."""
+    """Return displayed c/kWh from raw spot price.
+
+    When ELEC_SHOW_TOTAL is enabled, apply ELEC_VAT_PCT only to the spot
+    component and then add the configured VAT-inclusive tax, transfer, and
+    margin values."""
     if not ELEC_SHOW_TOTAL:
         return spot_ckwh
     return (spot_ckwh * (1 + ELEC_VAT_PCT / 100)) + ELEC_TAX_CKWH + ELEC_TRANSFER_CKWH + ELEC_MARGIN_CKWH
