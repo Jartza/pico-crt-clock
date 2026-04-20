@@ -1,19 +1,24 @@
 # pico-crt-clock
 
-[MicroPython](https://github.com/micropython/micropython) firmware running
-on first core of a Raspberry Pi Pico W,
-driving a composite PAL CRT TV via a resistor-ladder DAC, using
-[pico-mposite](https://github.com/breakintoprogram/pico-mposite) as the video
-engine running on the second RP2040 core.
+[MicroPython](https://github.com/micropython/micropython) firmware for a
+Raspberry Pi Pico W, using
+[pico-mposite](https://github.com/breakintoprogram/pico-mposite) on RP2040
+core1 to generate a monochrome PAL-ish composite video signal while core0 runs
+MicroPython and a custom `gfx` module.
 
-The `gfx` MicroPython module provides a general-purpose API for composite
-video output — pixel drawing, text, sprites, and screen control — usable for
-any MicroPython project that needs a B/W composite display.
+This project started as an attempt to give a small 5.5" black-and-white CRT TV
+a new job as a clock and weather display. That original use case is still here,
+but the repo has since grown into a more general composite-video MicroPython
+base with a reusable graphics API and a set of bundled example apps.
 
-Multiple display apps ship in this repo; which apps run, which GPIO each
-maps to, and how apps with local detail modes read their secondary switch are
-all configured in `config.py` via the `APPS` list (see
-[Configuring apps](#configuring-apps) below). Default set:
+The `gfx` module provides a general-purpose API for composite video output:
+pixel drawing, text, sprites, and screen control for MicroPython projects that
+need a simple monochrome display. The bundled firmware can drive any TV,
+monitor, or other display chain that accepts a PAL-ish composite signal, not
+just vintage CRT sets.
+
+The repo ships with configurable example apps selected from `config.py` via the
+`APPS` list (see [Configuring apps](#configuring-apps)). The default set is:
 
 | App | GPIO | Description |
 |---|---|---|
@@ -28,15 +33,15 @@ Optional extras that can be added to `APPS`:
 | Electricity | 24h Nord Pool hourly spot price bar chart from [Elering Dashboard API](https://dashboard.elering.ee) (FI/SE/NO/DK/EE/LV/LT), optional tomorrow view on a shared detail GPIO, configurable spot VAT plus VAT-inclusive tax / transfer / margin adders |
 | Torus demo | Animated 3D spinning torus; the original show-off demo |
 
-If no GPIO is pulled low the first entry in `APPS` (default: weather) runs.
+If no GPIO is pulled low, the first entry in `APPS` runs by default.
 
 ---
 
 ## Gallery
 
-Real hardware:
+Real hardware example:
 
-![Clock running on a small CRT TV](img/small_crt.jpg)
+![Clock/weather build running on a small CRT TV](img/small_crt.jpg)
 
 Simulator captures:
 
