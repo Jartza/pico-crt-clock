@@ -58,8 +58,9 @@ MODULE_CMAKE="$SCRIPT_DIR/micropython.cmake"
 PIO_SRC="$ROOT/pico-mposite"
 
 PATCH_MP="$SCRIPT_DIR/patches/micropython-no-thread.patch"
+PATCH_MP_FLASH="$SCRIPT_DIR/patches/micropython-flash-freeze.patch"
 
-# -- parse arguments -----------------------------------------------------------
+# Parse arguments
 VARIANT=""
 C64FONT=0
 
@@ -98,7 +99,23 @@ PATCH_PM_FONT=""
 CMAKE_EXTRA=""
 [ "$VARIANT" = "buffer" ] && CMAKE_EXTRA="-DUSE_COLOUR_LUT=1"
 
-# -- patch helpers --------------------------------------------------------------
+# CMake cache helpers
+reset_stale_cmake_build_dir() {
+    local dir="$1"
+    local cache="$dir/CMakeCache.txt"
+    [ -f "$cache" ] || return 0
+
+    # CMake caches embed absolute source/build paths. If the repo was moved,
+    # reusing that cache fails with "does not match the source used to generate".
+    if grep -Fq "$ROOT" "$cache"; then
+        return 0
+    fi
+
+    echo "Removing stale CMake cache: $dir"
+    rm -rf "$dir"
+}
+
+# Patch helpers
 apply_patch() {
     local repo="$1" patchfile="$2"
     if git -C "$repo" apply --check --ignore-whitespace "$patchfile" 2>/dev/null; then
@@ -119,6 +136,7 @@ revert_patch() {
 
 cleanup() {
     echo "Reverting patches to restore vanilla submodules..."
+    revert_patch "$ROOT/micropython" "$PATCH_MP_FLASH"
     revert_patch "$ROOT/micropython" "$PATCH_MP"
     # Revert in reverse application order; font patch is independent of the
     # others (touches only charset.c) so order relative to them doesn't matter.
@@ -130,37 +148,40 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# -- 1. initialise submodules --------------------------------------------------
+# 1. Initialise submodules
 echo "Initialising submodules..."
+reset_stale_cmake_build_dir "$MP_PORT/build-$BOARD"
+reset_stale_cmake_build_dir "$BUILD_DIR"
 git -C "$ROOT" submodule update --init
 make -C "$MP_PORT" BOARD=$BOARD submodules
 
-# -- 2. apply patches ----------------------------------------------------------
+# 2. Apply patches
 FONT_LABEL=""
 [ "$C64FONT" = "1" ] && FONT_LABEL=", font: c64"
 echo "Applying patches (variant: $VARIANT$FONT_LABEL)..."
 apply_patch "$ROOT/micropython" "$PATCH_MP"
+apply_patch "$ROOT/micropython" "$PATCH_MP_FLASH"
 apply_patch "$ROOT/pico-mposite" "$PATCH_PM_COMMON"
 apply_patch "$ROOT/pico-mposite" "$PATCH_PM_DRAWLINE"
 apply_patch "$ROOT/pico-mposite" "$PATCH_PM_SCANLINE"
 [ -n "$PATCH_PM_VARIANT" ] && apply_patch "$ROOT/pico-mposite" "$PATCH_PM_VARIANT"
 [ -n "$PATCH_PM_FONT" ]    && apply_patch "$ROOT/pico-mposite" "$PATCH_PM_FONT"
 
-# -- 3. build mpy-cross if needed ----------------------------------------------
+# 3. Build mpy-cross if needed
 if [ ! -f "$ROOT/micropython/mpy-cross/build/mpy-cross" ]; then
     echo "Building mpy-cross..."
     make -C "$ROOT/micropython/mpy-cross"
 fi
 
-# -- 4. cmake configure + pioasm -----------------------------------------------
-if [ ! -f "$PIOASM" ]; then
-    echo "Configuring cmake (build dir: $BUILD_DIR, variant: $VARIANT)..."
-    cmake -S "$MP_PORT" -B "$BUILD_DIR" \
-        -DPICO_BUILD_DOCS=0 \
-        -DMICROPY_BOARD=$BOARD \
-        -DUSER_C_MODULES="$MODULE_CMAKE" \
-        $CMAKE_EXTRA
+# 4. CMake configure + pioasm
+echo "Configuring cmake (build dir: $BUILD_DIR, variant: $VARIANT)..."
+cmake -S "$MP_PORT" -B "$BUILD_DIR" \
+    -DPICO_BUILD_DOCS=0 \
+    -DMICROPY_BOARD=$BOARD \
+    -DUSER_C_MODULES="$MODULE_CMAKE" \
+    $CMAKE_EXTRA
 
+if [ ! -f "$PIOASM" ]; then
     echo "Building pioasm..."
     make -C "$BUILD_DIR" pioasmBuild
 fi
@@ -169,7 +190,7 @@ echo "Generating PIO headers..."
 "$PIOASM" "$PIO_SRC/cvideo_sync.pio" "$SCRIPT_DIR/cvideo_sync.pio.h"
 "$PIOASM" "$PIO_SRC/cvideo_data.pio" "$SCRIPT_DIR/cvideo_data.pio.h"
 
-# -- 5. build firmware ---------------------------------------------------------
+# 5. Build firmware
 echo "Building MicroPython firmware with gfx module (variant: $VARIANT$FONT_LABEL)..."
 make -C "$BUILD_DIR" -j$(nproc)
 
@@ -185,7 +206,13 @@ echo "Flash with:"
 echo "  cp $BUILD_DIR/firmware.uf2 /media/\$USER/RPI-RP2/"
 echo ""
 echo "Then copy Python files to the Pico filesystem:"
+echo "  $SCRIPT_DIR/upload.sh"
+echo ""
+echo "Or individually:"
 echo "  mpremote fs cp $SCRIPT_DIR/main.py :main.py"
-echo "  mpremote fs cp $SCRIPT_DIR/clock.py :clock.py"
+echo "  mpremote fs cp $SCRIPT_DIR/common.py :common.py"
+echo "  mpremote fs cp $SCRIPT_DIR/weather.py :weather.py"
+echo "  mpremote fs cp $SCRIPT_DIR/torus.py :torus.py"
 echo "  mpremote fs cp $SCRIPT_DIR/icons.bin :icons.bin"
+echo "  mpremote fs cp $SCRIPT_DIR/torus.bin :torus.bin"
 echo "  mpremote fs cp $SCRIPT_DIR/config.py :config.py"

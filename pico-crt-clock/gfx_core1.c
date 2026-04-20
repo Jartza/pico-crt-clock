@@ -1,6 +1,6 @@
 // gfx_core1.c
 // Runs entirely on core1.
-// Call gfx_core1_launch() once from core0 early in main() — before
+// Call gfx_core1_launch() once from core0 early in main() - before
 // MicroPython starts.  After that, core0 never touches this code.
 
 #include "pico/multicore.h"
@@ -11,14 +11,17 @@
 #include "graphics.h"
 #include "charset.h"
 
-// ── shared state definitions (declared extern in gfx_queue.h) ───────────────
+// Shared state definitions (declared extern in gfx_queue.h)
 gfx_queue_t          gfx_queue      = {0};
 volatile uint8_t     gfx_blit_buf[GFX_BLIT_BUFSIZE];
 volatile bool        gfx_blit_busy  = false;
 volatile bool        gfx_deinit_done = false;
+volatile bool        gfx_flash_freeze_requested = false;
+volatile bool        gfx_flash_frozen = false;
+volatile bool        gfx_core1_online = false;
 
-// ── double-size character renderer ───────────────────────────────────────────
-// Renders one glyph at 2× scale (16×16 px) by writing 2×2 pixel blocks
+// Double-size character renderer
+// Renders one glyph at 2x scale (16x16 px) by writing 2x2 pixel blocks
 // directly to the bitmap.  Uses the Spectrum 48K charset (96 glyphs from
 // ASCII 32, 8 bytes per glyph, MSB = leftmost pixel).
 // bitmap/width/height are all provided by cvideo.h.
@@ -52,7 +55,7 @@ static void print_char_2x(int x, int y, unsigned char c,
     }
 }
 
-// ── command dispatcher ───────────────────────────────────────────────────────
+// Command dispatcher
 static void dispatch(const gfx_cmd_t *c) {
     switch (c->type) {
 
@@ -61,7 +64,7 @@ static void dispatch(const gfx_cmd_t *c) {
             break;
 
         case CMD_CLS:
-            wait_vblank();          // cls always waits first — clean flash
+            wait_vblank();          // cls always waits first - clean flash
             cls(c->c);
             break;
 
@@ -109,7 +112,7 @@ static void dispatch(const gfx_cmd_t *c) {
             const char *s = c->str;
             while (*s) {
                 print_char_2x(cx, c->y0, (unsigned char)*s, c->bc, c->fc);
-                cx += 16;   // 8 px glyph × 2 = 16 px per character
+                cx += 16;   // 8 px glyph x 2 = 16 px per character
                 s++;
             }
             break;
@@ -124,16 +127,17 @@ static void dispatch(const gfx_cmd_t *c) {
             blit((const void *)gfx_blit_buf, 0, 0, c->sw, c->sh,
                  c->x0, c->y0);
             __dmb();
-            gfx_blit_busy = false;  // release buffer — core0 may write next sprite
+            gfx_blit_busy = false;  // release buffer - core0 may write next sprite
             __sev();                // wake core0 if it is spinning in gfx_blit()
             break;
 
         case CMD_DEINIT:
+            gfx_core1_online = false;
             deinit_cvideo();
             __dmb();
             gfx_deinit_done = true;
             __sev();            // wake core0 from its spin in gfx_deinit()
-            while (1) __wfe(); // park — video engine is stopped
+            while (1) __wfe(); // park - video engine is stopped
             break;             // unreachable
 
         default:
@@ -141,22 +145,33 @@ static void dispatch(const gfx_cmd_t *c) {
     }
 }
 
-// ── core1 entry point ────────────────────────────────────────────────────────
+// Park core1 in SRAM while core0 temporarily disables XIP for a flash write.
+// Keep this out-of-line and in RAM: if it gets inlined into core1_main then
+// the "freeze" path still executes from flash and defeats the whole purpose.
+static void __no_inline_not_in_flash_func(gfx_core1_wait_if_frozen)(void) {
+    gfx_flash_frozen = true;
+    __dmb();
+    __sev();
+    while (gfx_flash_freeze_requested) {
+        __wfe();
+    }
+    gfx_flash_frozen = false;
+    __dmb();
+    __sev();
+}
+
+// Core1 entry point
 static void core1_main(void) {
-    // ALL video IRQ and DMA setup happens here — on core1 — so that
+    // ALL video IRQ and DMA setup happens here - on core1 - so that
     // DMA_IRQ_1 and PIO0_IRQ_0 are owned by core1's NVIC.
     initialise_cvideo();
-
-    // Allow MicroPython's flash write path to temporarily pause this core.
-    // The lockout victim flag survives soft resets, so without this core1
-    // won't ACK multicore_lockout_start_blocking() → webREPL/USB write hangs.
-    // DMA/PIO are autonomous hardware and keep running during the lockout;
-    // the dispatcher may miss a frame but that's acceptable.
-    multicore_lockout_victim_init();
+    gfx_core1_online = true;
 
     gfx_cmd_t cmd;
     while (1) {
-        if (gfx_queue_pop(&cmd)) {
+        if (gfx_flash_freeze_requested) {
+            gfx_core1_wait_if_frozen();
+        } else if (gfx_queue_pop(&cmd)) {
             dispatch(&cmd);
             __sev();
         } else {
@@ -165,11 +180,11 @@ static void core1_main(void) {
     }
 }
 
-// ── called once from core0 (before mp_main) ──────────────────────────────────
+// Called once from core0 (before mp_main)
 // MicroPython's CMakeLists.txt sets PICO_CORE1_STACK_SIZE=0, which makes
 // multicore_launch_core1() unconditionally panic().  We must supply our own
 // stack and call multicore_launch_core1_with_stack() directly.
-static uint32_t core1_stack[1024];  // 4 KB — ample for initialise_cvideo() + dispatch loop
+static uint32_t core1_stack[1024];  // 4 KB - ample for initialise_cvideo() + dispatch loop
 
 void gfx_core1_launch(void) {
     // PSM-reset core1 back to ROM boot state before launching.
@@ -185,4 +200,31 @@ void gfx_core1_launch(void) {
     // core1 to finish rather than returning immediately.
     gfx_deinit_done = false;
     multicore_launch_core1_with_stack(core1_main, core1_stack, sizeof(core1_stack));
+}
+
+bool gfx_core1_flash_freeze_enter(void) {
+    if (!gfx_core1_online) {
+        return false;
+    }
+    gfx_flash_freeze_requested = true;
+    __dmb();
+    __sev();
+    while (gfx_core1_online && !gfx_flash_frozen) {
+        tight_loop_contents();
+    }
+    return gfx_core1_online;
+}
+
+void gfx_core1_flash_freeze_exit(void) {
+    if (!gfx_core1_online) {
+        gfx_flash_freeze_requested = false;
+        gfx_flash_frozen = false;
+        return;
+    }
+    gfx_flash_freeze_requested = false;
+    __dmb();
+    __sev();
+    while (gfx_core1_online && gfx_flash_frozen) {
+        tight_loop_contents();
+    }
 }

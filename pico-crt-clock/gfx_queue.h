@@ -1,17 +1,17 @@
 // gfx_queue.h
 // Shared between core0 (MicroPython) and core1 (video engine).
-// All state in this file lives in .bss / static SRAM — never in GC heap.
+// All state in this file lives in .bss / static SRAM - never in GC heap.
 
 #pragma once
 #include <stdint.h>
 #include <stdbool.h>
 
-// ── tunables ────────────────────────────────────────────────────────────────
+// Tunables
 #define GFX_QUEUE_SIZE   64          // must be power-of-2 for the mask trick
-#define GFX_BLIT_BUFSIZE (64 * 64)  // max sprite: 64×64 px
+#define GFX_BLIT_BUFSIZE (64 * 64)  // max sprite: 64x64 px
 #define GFX_STR_MAXLEN   64
 
-// ── command type ────────────────────────────────────────────────────────────
+// Command type
 typedef enum {
     CMD_CLS = 0,
     CMD_PLOT,
@@ -30,7 +30,7 @@ typedef enum {
     CMD_DEINIT,         // stop PIO/DMA/IRQs; core1 parks after this
 } gfx_cmd_type_t;
 
-// ── command payload ──────────────────────────────────────────────────────────
+// Command payload
 // One struct covers every command; unused fields are zero.
 typedef struct {
     gfx_cmd_type_t type;
@@ -38,12 +38,12 @@ typedef struct {
     uint8_t  c;          // colour
     uint8_t  bc, fc;     // background / foreground (print)
     uint8_t  filled;     // bool for circle/triangle/polygon
-    int16_t  sw, sh;     // blit source width/height  (dx,dy → x0,y0)
+    int16_t  sw, sh;     // blit source width/height  (dx,dy -> x0,y0)
     int16_t  scroll_rows;
     char     str[GFX_STR_MAXLEN];
 } gfx_cmd_t;
 
-// ── ring buffer (single-producer core0, single-consumer core1) ──────────────
+// Ring buffer (single-producer core0, single-consumer core1)
 #define GFX_QUEUE_MASK (GFX_QUEUE_SIZE - 1)
 
 typedef struct {
@@ -54,16 +54,19 @@ typedef struct {
 
 extern gfx_queue_t gfx_queue;
 
-// Static blit pixel buffer — core0 fills this, core1 reads it.
+// Static blit pixel buffer - core0 fills this, core1 reads it.
 // gfx_blit_busy is set true by core0 just before pushing CMD_BLIT and
 // cleared by core1 after blit() returns.  Core0 spins on it before each
 // copy, so back-to-back gfx.blit() calls in Python need only one
-// wait_vblank() before the first one — not one per icon.
+// wait_vblank() before the first one - not one per icon.
 extern volatile uint8_t gfx_blit_buf[GFX_BLIT_BUFSIZE];
 extern volatile bool    gfx_blit_busy;
 extern volatile bool    gfx_deinit_done;  // set by core1 after CMD_DEINIT completes
+extern volatile bool    gfx_flash_freeze_requested;
+extern volatile bool    gfx_flash_frozen;
+extern volatile bool    gfx_core1_online;
 
-// ── inline queue helpers (safe to call from either core) ────────────────────
+// Inline queue helpers (safe to call from either core)
 
 // Push a command from core0.  Returns false if the queue is full.
 // Caller should spin/yield if it gets false (shouldn't happen in practice
@@ -97,4 +100,3 @@ static inline void gfx_queue_push_blocking(const gfx_cmd_t *cmd) {
     }
     __sev();       // wake core1 from __wfe() so it processes the new command
 }
-

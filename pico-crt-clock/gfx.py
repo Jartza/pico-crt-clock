@@ -24,7 +24,7 @@ class _MicropythonStub:
 builtins.micropython = _MicropythonStub()
 
 class _Ptr:
-    """Identity wrapper — makes ptr32(arr)[i] work as plain array access on PC."""
+    """Identity wrapper - makes ptr32(arr)[i] work as plain array access on PC."""
     __slots__ = ('_a',)
     def __init__(self, a):       self._a = a
     def __getitem__(self, i):    return self._a[i]
@@ -34,16 +34,16 @@ builtins.ptr32 = _Ptr
 builtins.ptr16 = _Ptr
 builtins.ptr8  = _Ptr
 
-# -- display geometry ----------------------------------------------------------
+# Display geometry
 WIDTH  = 256
 HEIGHT = 192
 BORDER = 20
 SCALE  = 3   # integer scale for visibility on modern displays
 
-# -- 16-level grayscale palette ------------------------------------------------
+# 16-level grayscale palette
 PALETTE = tuple((round(i * 255 / 15),) * 3 for i in range(16))
 
-# -- ZX Spectrum 48K charset ---------------------------------------------------
+# ZX Spectrum 48K charset
 # 96 glyphs, ASCII 32-127, 8 bytes per glyph, MSB = leftmost pixel.
 # Byte data taken verbatim from pico-mposite/charset.c.
 _CHARSET_SPECTRUM = bytes([
@@ -145,7 +145,7 @@ _CHARSET_SPECTRUM = bytes([
     0x3c,0x42,0x99,0xa1,0xa1,0x99,0x42,0x3c,  # 127 DEL (Spectrum copyright symbol)
 ])
 
-# -- Commodore 64 charset (lowercase+uppercase ROM set, second 2K) -------------
+# Commodore 64 charset (lowercase+uppercase ROM set, second 2K)
 # 96 glyphs, ASCII 32-127, 8 bytes per glyph, MSB = leftmost pixel.
 # Uppercase A-Z: ROM positions 0x41-0x5A.  Lowercase a-z: ROM positions 0x01-0x1A.
 # Punctuation/digits (32-63) match the C64 ROM directly (positions 0x20-0x3F).
@@ -249,14 +249,129 @@ _CHARSET_C64 = bytes([
     0x33,0x99,0xcc,0x66,0x33,0x99,0xcc,0x66,  # 127 DEL (C64 diagonal)
 ])
 
-# -- active charset (selected at import time via GFX_FONT env var) --------------
+# Active charset (selected at import time via GFX_FONT env var)
 _FONT_NAME = os.environ.get('GFX_FONT', 'spectrum').lower()
 _CHARSET   = _CHARSET_C64 if _FONT_NAME == 'c64' else _CHARSET_SPECTRUM
 
-# -- internal state ------------------------------------------------------------
+# Internal state
 _screen        = None   # pygame window surface
 _surface       = None   # 256x192 logical surface
 _border_colour = 0
+
+# GPIO simulation
+# SimPin objects are appended here in order as machine.Pin() is called.
+# run_sim.py sets _mode_pin_count = len(APPS) before the app boots so we know
+# how many of the early pins belong to main.py's mode-select dispatch and how
+# many trailing pins belong to the running app (e.g. news's detail switch).
+# Keys a/b/c/d switch modes exclusively (one low at a time); ESC = all high.
+# Key n cycles the selected app's local-detail switch through its configured
+# positions, driving up to two app-level sim pins accordingly.
+# Detail mode persists across soft-resets via _detail_mode.
+_sim_pins        = []
+_mode_pin_count  = 3      # overridden by run_sim.py based on len(APPS)
+_desired_mode    = 0      # persists across sim reboots; updated by _set_gpio_mode
+_detail_mode     = 0      # all configured detail pins high
+_detail_gpios    = ()
+_app_detail_gpios = ()
+_adc_value       = 32768  # simulated ADC raw value 0-65535; o=raise, p=lower (step 2048)
+
+_MODE_KEYS     = "abcd"   # first N letters map to APPS[0..N-1]
+
+class _SimPin:
+    __slots__ = ('_low',)
+    def __init__(self):    self._low = False
+    def value(self):       return 0 if self._low else 1
+
+_KEY_TO_PIN = {
+    pygame.K_a: 0,
+    pygame.K_b: 1,
+    pygame.K_c: 2,
+    pygame.K_d: 3,
+}
+
+def _set_gpio_mode(idx):
+    """Pull mode pin idx low (exclusive among mode pins). idx=-1 = all high.
+    Only affects the first _mode_pin_count sim pins."""
+    global _desired_mode
+    if 0 <= idx and idx >= _mode_pin_count:
+        return   # key pressed beyond the configured app count; ignore
+    _desired_mode = idx
+    _select_detail_gpios(idx)
+    for i, p in enumerate(_sim_pins[:_mode_pin_count]):
+        p._low = (i == idx)
+    _update_caption()
+
+def _detail_state_count():
+    if len(_detail_gpios) >= 2:
+        return 3
+    if len(_detail_gpios) == 1:
+        return 2
+    return 1
+
+def _detail_label():
+    if not _detail_gpios:
+        return ""
+    bits = []
+    for i, gpio in enumerate(_detail_gpios):
+        low = ((_detail_mode == 1 and i == 0) or
+               (_detail_mode == 2 and i == 1))
+        bits.append("{}:{}".format(gpio, 0 if low else 1))
+    return " ".join(bits)
+
+def _select_detail_gpios(idx):
+    global _detail_gpios, _detail_mode
+    if not _app_detail_gpios:
+        _detail_gpios = ()
+        _detail_mode = 0
+        return
+    sel = 0 if idx < 0 or idx >= len(_app_detail_gpios) else idx
+    _detail_gpios = _app_detail_gpios[sel]
+    _detail_mode %= _detail_state_count()
+    _apply_detail()
+
+def _apply_detail():
+    """Drive up to two app-level detail pins based on the selected app config.
+    Mode 0 = all configured detail pins high; modes 1/2 pull the first/second
+    configured detail pin low."""
+    a = _mode_pin_count
+    if len(_sim_pins) > a:
+        _sim_pins[a]._low = (len(_detail_gpios) >= 1 and _detail_mode == 1)
+    if len(_sim_pins) > a + 1:
+        _sim_pins[a + 1]._low = (len(_detail_gpios) >= 2 and _detail_mode == 2)
+
+def _cycle_detail():
+    """Advance the configured local-detail switch for the selected app."""
+    global _detail_mode
+    states = _detail_state_count()
+    if states <= 1:
+        return
+    _detail_mode = (_detail_mode + 1) % states
+    _apply_detail()
+    _update_caption()
+
+def _reset_detail():
+    global _detail_mode
+    _detail_mode = 0
+    _apply_detail()
+    _update_caption()
+
+def _update_caption():
+    if not pygame.get_init():
+        return
+    font_tag = "C64 font" if _FONT_NAME == 'c64' else "Spectrum font"
+    n_mode   = min(len(_sim_pins), _mode_pin_count)
+    active   = next((i for i, p in enumerate(_sim_pins[:_mode_pin_count]) if p._low), None)
+    adc_disp = f"  o/p=ADC:{_adc_value >> 8}"
+    if _sim_pins:
+        hints = "  ".join(f"{_MODE_KEYS[i]}=mode {i}" for i in range(n_mode))
+        detail_label = _detail_label()
+        if detail_label:
+            hints += f"  n={detail_label}"
+        mode  = f"mode {active}" if active is not None else "default"
+        caption = f"pico-crt-clock sim [{font_tag}]  |  {hints}  ESC=default  [{mode}]{adc_disp}"
+    else:
+        caption = f"pico-crt-clock sim [{font_tag}]{adc_disp}"
+    pygame.display.set_caption(caption)
 
 def _ensure_init():
     global _screen, _surface
@@ -265,8 +380,7 @@ def _ensure_init():
     pygame.init()
     _screen  = pygame.display.set_mode(
         (WIDTH * SCALE + BORDER * 2, HEIGHT * SCALE + BORDER * 2))
-    font_tag = "C64 font" if _FONT_NAME == 'c64' else "Spectrum font"
-    pygame.display.set_caption(f"pico-crt-clock sim [{font_tag}]")
+    _update_caption()
     _surface = pygame.Surface((WIDTH, HEIGHT))
     _surface.fill(PALETTE[0])
     _present()
@@ -274,7 +388,7 @@ def _ensure_init():
 _key_queue = []
 
 def get_key():
-    """Return next pending key code or None. Simulator only — not present on hardware."""
+    """Return next pending key code or None. Simulator only - not present on hardware."""
     return _key_queue.pop(0) if _key_queue else None
 
 def _pump():
@@ -285,7 +399,22 @@ def _pump():
             pygame.quit()
             sys.exit(0)
         elif ev.type == pygame.KEYDOWN:
-            _key_queue.append(ev.key)
+            if ev.key in _KEY_TO_PIN:
+                _set_gpio_mode(_KEY_TO_PIN[ev.key])
+            elif ev.key == pygame.K_n:
+                _cycle_detail()
+            elif ev.key == pygame.K_o:
+                global _adc_value
+                _adc_value = min(65535, _adc_value + 2048)
+                _update_caption()
+            elif ev.key == pygame.K_p:
+                _adc_value = max(0, _adc_value - 2048)
+                _update_caption()
+            elif ev.key == pygame.K_ESCAPE:
+                _set_gpio_mode(-1)
+                _reset_detail()
+            else:
+                _key_queue.append(ev.key)
 
 def _present():
     _pump()
@@ -314,10 +443,10 @@ def _draw_char(x, y, ch, bg, fg, scale=1):
                     pygame.draw.rect(_surface, colour,
                                      pygame.Rect(px, py, s, s))
 
-# -- public API (mirrors mod_gfx.c) -------------------------------------------
+# Public API (mirrors mod_gfx.c)
 
 def usb_ready():
-    """Always False in simulation - skips USB detect loop in clock.py."""
+    """Always False in simulation - skips USB detect loop in weather.py."""
     return False
 
 def usb_disable():
@@ -327,11 +456,12 @@ def init():
     _ensure_init()
 
 def deinit():
-    global _screen, _surface
-    if _screen:
-        pygame.quit()
-        _screen  = None
-        _surface = None
+    # Simulator has no flash-write glitches to hide, but mirror the device's
+    # "no signal" black screen so the user sees that something is happening.
+    # Do NOT pygame.quit() here - it would destroy the window mid-run.
+    if _surface:
+        _surface.fill(PALETTE[0])
+        _present()
 
 def cls(colour):
     # Mirror hardware behaviour: cls() waits for vblank before clearing.
@@ -342,7 +472,7 @@ def cls(colour):
     _surface.fill(PALETTE[colour & 0xF])
 
 def wait_vblank():
-    _pump()
+    _present()
 
 def set_border(colour):
     global _border_colour
