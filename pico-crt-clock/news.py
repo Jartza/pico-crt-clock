@@ -1,6 +1,7 @@
 import urequests
 import gc
 import os
+import machine
 try:
     from config_local import *
 except ImportError:
@@ -78,6 +79,12 @@ def _check_detail_swap(p13, c13, e13, p14, c14, e14):
 
 NEWS_DIR = 'newscache'
 _CHUNK   = 64   # bytes per read when scanning JSON
+NEWS_META = NEWS_DIR + '/index.txt'
+_TMP_JSON_PREFIX = '_tmp_news_'
+_WATCHDOG_BASE = 0x40058000
+_SCRATCH_MAGIC = _WATCHDOG_BASE + 0x0C
+_SCRATCH_INDEX = _WATCHDOG_BASE + 0x10
+_SCRATCH_NEWS_MAGIC = 0x4E455753   # "NEWS"
 
 wlan = None
 
@@ -113,6 +120,63 @@ def _sanitize(text):
         elif ch in _CHARMAP:
             out.append(_CHARMAP[ch])
     return ''.join(out)
+
+def _pub_sort_key(dt):
+    """Return a sortable UTC timestamp key from an ISO8601 datetime string."""
+    if len(dt) >= 19:
+        return dt[0:4] + dt[5:7] + dt[8:10] + dt[11:13] + dt[14:16] + dt[17:19]
+    return '00000000000000'
+
+def _tmp_json_path(seq):
+    return '{}/{}{:02d}.json'.format(NEWS_DIR, _TMP_JSON_PREFIX, seq)
+
+def _write_atomic(path, text):
+    tmp = path + '.tmp'
+    with open(tmp, 'w') as f:
+        f.write(text)
+    try:
+        os.remove(path)
+    except OSError:
+        pass
+    os.rename(tmp, path)
+
+def _basename(path):
+    idx = path.rfind('/')
+    return path[idx + 1:] if idx >= 0 else path
+
+def _clear_news_cache():
+    try:
+        names = os.listdir(NEWS_DIR)
+    except OSError:
+        return
+    for fn in names:
+        if ((fn.startswith('news_') and fn.endswith('.txt'))
+                or fn.startswith(_TMP_JSON_PREFIX)
+                or fn in ('index.txt', 'index.txt.tmp')):
+            try:
+                os.remove(NEWS_DIR + '/' + fn)
+            except OSError:
+                pass
+
+def _store_metadata(entries):
+    lines = []
+    for fname, pubkey, section in entries:
+        lines.append('{}|{}|{}\n'.format(fname, pubkey, section))
+    _write_atomic(NEWS_META, ''.join(lines))
+
+def _save_current(idx):
+    machine.mem32[_SCRATCH_MAGIC] = _SCRATCH_NEWS_MAGIC
+    machine.mem32[_SCRATCH_INDEX] = idx
+
+def _load_current(files):
+    if not files:
+        return 0
+    if machine.mem32[_SCRATCH_MAGIC] != _SCRATCH_NEWS_MAGIC:
+        return 0
+    want = machine.mem32[_SCRATCH_INDEX]
+    if want < 0 or want >= len(files):
+        return 0
+    return want
 
 def _word_wrap(text, width):
     """Wrap text at word boundaries; hard-break words longer than width."""
@@ -360,9 +424,7 @@ def _fetch_and_store():
             os.mkdir(NEWS_DIR)
         except OSError:
             pass
-        for fn in os.listdir(NEWS_DIR):
-            if fn.startswith('news_') and fn.endswith('.txt'):
-                os.remove(NEWS_DIR + '/' + fn)
+        _clear_news_cache()
 
         # Parse "section:count" pairs; fall back to NEWS_COUNT if no count given
         sec_counts = []
@@ -377,12 +439,14 @@ def _fetch_and_store():
         for _, sec_n in sec_counts:
             total += sec_n
 
-        count = 0
+        fetched = []
+        seq = 0
         for section, sec_n in sec_counts:
             for page in range(1, sec_n + 1):
-                draw_banner("Fetching news...", "{:02d}/{:02d}".format(count + 1, total))
+                draw_banner("Fetching news...", "{:02d}/{:02d}".format(seq + 1, total))
                 gc.collect()
                 r = None
+                tmppath = _tmp_json_path(seq)
                 try:
                     r = urequests.get(
                         "https://content.guardianapis.com/search"
@@ -392,7 +456,7 @@ def _fetch_and_store():
                             section, page, NEWS_API_KEY),
                         timeout=30)
                     # Stream response to flash in small chunks so Python heap use stays flat.
-                    with open('_ntmp', 'wb') as f:
+                    with open(tmppath, 'wb') as f:
                         while True:
                             chunk = r.raw.read(512)
                             if not chunk:
@@ -411,45 +475,95 @@ def _fetch_and_store():
                 gc.collect()
 
                 # Extract headline as a short string (safe in RAM)
-                with open('_ntmp') as f:
+                with open(tmppath) as f:
                     headline = _sanitize(_json_str(f, 'headline').strip())
+                with open(tmppath) as f:
+                    pubkey = _pub_sort_key(_json_str(f, 'webPublicationDate').strip())
                 gc.collect()
 
                 if not headline:
-                    os.remove('_ntmp')
+                    try:
+                        os.remove(tmppath)
+                    except OSError:
+                        pass
+                    seq += 1
                     continue
 
                 tlines = _word_wrap(headline, CHARS_TITLE)[:2]
-
-                # Write summary file: title + section + trailText (HTML, same stripper as body)
-                sumpath = '{}/news_{:02d}_sum.txt'.format(NEWS_DIR, count)
-                with open(sumpath, 'w') as out:
-                    out.write((tlines[0] if tlines else '') + '\n')
-                    out.write((tlines[1] if len(tlines) > 1 else '') + '\n')
-                    out.write(section + '\n')
-                    out.write('---\n')
-                    _json_body_wrap('_ntmp', 'trailText', out, CHARS_BODY, 0)
-                gc.collect()
-
-                # Write full article file: title + section + HTML body streamed and stripped
-                outpath = '{}/news_{:02d}.txt'.format(NEWS_DIR, count)
-                with open(outpath, 'w') as out:
-                    out.write((tlines[0] if tlines else '') + '\n')
-                    out.write((tlines[1] if len(tlines) > 1 else '') + '\n')
-                    out.write(section + '\n')
-                    out.write('---\n')
-                    _json_body_wrap('_ntmp', 'body', out, CHARS_BODY, NEWS_BODY_LINES)
-                os.remove('_ntmp')
-                count += 1
+                fetched.append((pubkey, seq, section, tlines, tmppath))
                 del headline, tlines
+                seq += 1
                 gc.collect()
+        gfx.cls(BLACK)
+        draw_banner("Sorting news...")
+        fetched.sort(reverse=True)
+
+        count = 0
+        meta = []
+        for pubkey, _, section, tlines, tmppath in fetched:
+            # Write summary file: title + section + trailText (HTML, same stripper as body)
+            sumpath = '{}/news_{:02d}_sum.txt'.format(NEWS_DIR, count)
+            with open(sumpath, 'w') as out:
+                out.write((tlines[0] if tlines else '') + '\n')
+                out.write((tlines[1] if len(tlines) > 1 else '') + '\n')
+                out.write(section + '\n')
+                out.write('---\n')
+                _json_body_wrap(tmppath, 'trailText', out, CHARS_BODY, 0)
+            gc.collect()
+
+            # Write full article file: title + section + HTML body streamed and stripped
+            base = 'news_{:02d}.txt'.format(count)
+            outpath = NEWS_DIR + '/' + base
+            with open(outpath, 'w') as out:
+                out.write((tlines[0] if tlines else '') + '\n')
+                out.write((tlines[1] if len(tlines) > 1 else '') + '\n')
+                out.write(section + '\n')
+                out.write('---\n')
+                _json_body_wrap(tmppath, 'body', out, CHARS_BODY, NEWS_BODY_LINES)
+            try:
+                os.remove(tmppath)
+            except OSError:
+                pass
+            meta.append((base, pubkey, section))
+            count += 1
+            gc.collect()
+
+        if count:
+            _store_metadata(meta)
+            _save_current(0)
         return count
     except Exception as e:
         # no traceback on Pico
         print("news fetch error: {}: {}".format(type(e).__name__, e))
+        try:
+            for fn in os.listdir(NEWS_DIR):
+                if fn.startswith(_TMP_JSON_PREFIX):
+                    os.remove(NEWS_DIR + '/' + fn)
+        except OSError:
+            pass
         return 0
 
 def _list_files():
+    try:
+        files = []
+        with open(NEWS_META) as f:
+            while True:
+                line = f.readline()
+                if not line:
+                    break
+                parts = line.rstrip().split('|')
+                if not parts or not parts[0]:
+                    continue
+                full = NEWS_DIR + '/' + parts[0]
+                try:
+                    os.stat(full)
+                    files.append(full)
+                except OSError:
+                    pass
+        if files:
+            return files
+    except OSError:
+        pass
     try:
         fnames = sorted(fn for fn in os.listdir(NEWS_DIR)
                         if fn.startswith('news_') and fn.endswith('.txt')
@@ -459,8 +573,8 @@ def _list_files():
         return []
 
 # Drawing
-def _header_time(section=''):
-    """Return a formatted local-time + date + section string for the header clock line."""
+def _header_line(section='', idx=None, total=None):
+    """Return the header clock line with article counter at the upper left."""
     ts = time.time()
     t  = time.localtime(ts + _utc_offset(ts))
     h, m = t[3], t[4]
@@ -478,17 +592,20 @@ def _header_time(section=''):
     line = tstr + '  ' + dstr
     if section:
         line += '  ' + section[0].upper() + section[1:]
+    if idx is not None and total is not None:
+        line = '{}/{}  {}'.format(idx + 1, total, line)
+    if len(line) > CHARS_BODY:
+        line = line[:CHARS_BODY]
     return line
 
-def _draw_header(t1, t2, section=''):
+def _draw_header(t1, t2, section='', idx=None, total=None):
     """Redraw pinned clock + title + separator each scroll step.
-    Clock at y=0: print_string background is enough (scroll artifact falls off-screen).
-    Title lines: full-width line erase at y-1 before each print (title may be shorter
-    than the full row, leaving columns outside the string width uncleared otherwise).
-    Separator: explicit erase at SEP_Y-1 (gfx.line has no background)."""
-    clk = _header_time(section)
+    Clears the full header rows before redrawing to avoid stale text."""
+    clk = _header_line(section, idx, total)
 
     # Clear scrolling artifacts
+    for yy in range(CLOCK_Y, CLOCK_Y + 8):
+        gfx.hline(yy, 0, 255, BLACK)
     gfx.line(0, TITLE_Y1 - 1, 255, TITLE_Y1 - 1, BLACK)
     gfx.line(0, TITLE_Y2 - 1, 255, TITLE_Y2 - 1, BLACK)
     gfx.line(0, SEP_Y - 1, 255, SEP_Y - 1, BLACK)
@@ -497,7 +614,7 @@ def _draw_header(t1, t2, section=''):
 
     # Draw date/time, header lines and separator
     gfx.line(0, SEP_Y,     255, SEP_Y,     7)
-    gfx.print_string((256 - len(clk) * 8) // 2, CLOCK_Y,  clk, BLACK, WHITE)
+    gfx.print_string(0, CLOCK_Y, clk, BLACK, WHITE)
     gfx.print_string((256 - len(t1)  * 8) // 2, TITLE_Y1, t1,  BLACK, WHITE)
     if t2:
         gfx.print_string((256 - len(t2) * 8) // 2, TITLE_Y2, t2, BLACK, WHITE)
@@ -506,7 +623,7 @@ def _draw_header(t1, t2, section=''):
 def _show_article(filename, pin, mode_counter, mode_expected,
                   p13=None, c13=0, e13=1,
                   p14=None, c14=0, e14=1,
-                  hold_ms=None):
+                  hold_ms=None, idx=None, total=None):
     """Display one article with smooth scroll if content exceeds screen height.
     Returns (result, mode_counter, c13, e13, c14, e14)."""
 
@@ -521,8 +638,8 @@ def _show_article(filename, pin, mode_counter, mode_expected,
 
         # Initial screen: cls clears everything, then draw header + body directly
         gfx.cls(BLACK)
-        clk = _header_time(section)
-        gfx.print_string((256 - len(clk) * 8) // 2, CLOCK_Y,  clk, BLACK, WHITE)
+        clk = _header_line(section, idx, total)
+        gfx.print_string(0, CLOCK_Y, clk, BLACK, WHITE)
         gfx.print_string((256 - len(t1)  * 8) // 2, TITLE_Y1, t1,  BLACK, WHITE)
         if t2:
             gfx.print_string((256 - len(t2) * 8) // 2, TITLE_Y2, t2, BLACK, WHITE)
@@ -568,7 +685,7 @@ def _show_article(filename, pin, mode_counter, mode_expected,
                 return 'SWAP', mode_counter, c13, e13, c14, e14
             gfx.wait_vblank()
             gfx.scroll_up(BLACK, 1)
-            _draw_header(t1, t2, section)
+            _draw_header(t1, t2, section, idx, total)
             sub_px += 1
             gfx.print_string(0, 192 - sub_px, nxtline, BLACK, WHITE)
             if sub_px == LINE_H:
@@ -648,7 +765,8 @@ def _draw_rsvp_pinpoint():
         gfx.hline(y_bot_out, 0, 255, WHITE)
 
 def _show_article_rsvp(filename, pin, mode_counter, mode_expected,
-                       p13, c13, e13, p14, c14, e14):
+                       p13, c13, e13, p14, c14, e14,
+                       idx=None, total=None):
     """Display one article RSVP-style: one word per tick in 2x font, ORP letter
     highlighted with a color-6 background, pinpoint marks at the fixed ORP column.
     Returns (result, mode_counter, c13, e13, c14, e14)."""
@@ -659,7 +777,7 @@ def _show_article_rsvp(filename, pin, mode_counter, mode_expected,
         f.readline()   # skip '---'
 
         gfx.cls(BLACK)
-        _draw_header(t1, t2, section)
+        _draw_header(t1, t2, section, idx, total)
         _draw_rsvp_pinpoint()
 
         for word, mult in _tokenize_body(f):
@@ -676,9 +794,9 @@ def _show_article_rsvp(filename, pin, mode_counter, mode_expected,
                 for i, ch in enumerate(word):
                     bg = COLOUR6 if i == orp else BLACK
                     gfx.print_string_2x(word_x + i * 16, RSVP_WORD_Y, ch, bg, WHITE)
-            # Refresh header so the clock stays live, and re-stroke the pinpoints
-            # in case _draw_header painted over the rows they occupy.
-            _draw_header(t1, t2, section)
+            # Refresh header so the clock and article counter stay live, and
+            # re-stroke the pinpoints in case _draw_header painted over them.
+            _draw_header(t1, t2, section, idx, total)
             _draw_rsvp_pinpoint()
 
             deadline = time.ticks_add(time.ticks_ms(), total_ms)
@@ -774,6 +892,7 @@ def run(pin=None, modes=None):
     c13 = 0
     c14 = 0
 
+    current_saved = None
     while True:
         active, mode_counter = check_pin_stable(pin, mode_expected, mode_counter)
         if not active:
@@ -800,6 +919,7 @@ def run(pin=None, modes=None):
             n = _fetch_and_store()
             if n > 0:
                 last_fetch_ts = time.time()
+                current_saved = -1
             files = _list_files()
 
         if not files:
@@ -816,17 +936,20 @@ def run(pin=None, modes=None):
                 time.sleep_ms(10)
             continue
 
-        idx = 0
+        idx = _load_current(files)
         while idx < len(files):
             active, mode_counter = check_pin_stable(pin, mode_expected, mode_counter)
             if not active:
                 return
             mode = _detail_mode(e13, e14)
             base = files[idx]
+            if current_saved != idx:
+                _save_current(idx)
+                current_saved = idx
             if mode == MODE_RSVP:
                 result, mode_counter, c13, e13, c14, e14 = _show_article_rsvp(
                     base, pin, mode_counter, mode_expected,
-                    p13, c13, e13, p14, c14, e14)
+                    p13, c13, e13, p14, c14, e14, idx, len(files))
             elif mode == MODE_SUMMARY:
                 spath = base[:-4] + '_sum.txt'
                 try:
@@ -836,11 +959,11 @@ def run(pin=None, modes=None):
                     show_file = base   # fall back to full if no summary cached
                 result, mode_counter, c13, e13, c14, e14 = _show_article(
                     show_file, pin, mode_counter, mode_expected,
-                    p13, c13, e13, p14, c14, e14, HOLD_SUM_MS)
+                    p13, c13, e13, p14, c14, e14, HOLD_SUM_MS, idx, len(files))
             else:   # MODE_FULL
                 result, mode_counter, c13, e13, c14, e14 = _show_article(
                     base, pin, mode_counter, mode_expected,
-                    p13, c13, e13, p14, c14, e14, HOLD_MS)
+                    p13, c13, e13, p14, c14, e14, HOLD_MS, idx, len(files))
             if result == 'MODE':
                 return
             elif result == 'SWAP':
