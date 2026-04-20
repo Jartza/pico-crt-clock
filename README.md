@@ -438,9 +438,10 @@ your latitude" (rough guide: 5 at 60°N, 6 at 55°N, 3 at 70°N).
 ### Electricity spot price
 
 Displays today's hourly Nord Pool day-ahead electricity price as a 24-bar chart.
-Bars below `ELEC_CHEAP_CKWH` are light grey, above `ELEC_EXPENSIVE_CKWH` are
-white, in between are mid-grey. The current hour is marked with a tick above
-its bar; the footer shows current / min / max c/kWh.
+Bars below `ELEC_CHEAP_CKWH` are dark grey, bars from `ELEC_CHEAP_CKWH` up to
+`ELEC_EXPENSIVE_CKWH` are light grey, and bars above `ELEC_EXPENSIVE_CKWH` are
+white. The current hour is marked with a tick above its bar; the footer shows
+current / min / max c/kWh.
 
 Set `ELEC_SHOW_TOTAL = True` to display a consumer-facing total price. The app
 applies `ELEC_VAT_PCT` to the raw Nord Pool spot price, then adds
@@ -582,8 +583,8 @@ ELEC_VAT_PCT          = 25.5      # applied to the raw spot component
 ELEC_TAX_CKWH         = 2.92      # already VAT-inclusive
 ELEC_TRANSFER_CKWH    = 5.26      # already VAT-inclusive
 ELEC_MARGIN_CKWH      = 0.59      # already VAT-inclusive
-ELEC_CHEAP_CKWH       = 5.0       # below -> light grey bar
-ELEC_EXPENSIVE_CKWH   = 15.0      # above -> white bar
+ELEC_CHEAP_CKWH       = 15.0      # below -> dark grey bar
+ELEC_EXPENSIVE_CKWH   = 25.0      # above -> white bar
 ELEC_DRAW_THRESHOLDS  = True      # draw horizontal rule lines at thresholds
 ELEC_INTERVAL         = 60 * 60   # fetch interval (seconds)
 ```

@@ -130,7 +130,7 @@ ELEC_TRANSFER_CKWH    = 5.26
 ELEC_MARGIN_CKWH      = 0.59
 # Threshold values in c/kWh - bars below CHEAP are light grey, above
 # EXPENSIVE are white, in between are mid grey.
-ELEC_CHEAP_CKWH       = 5.0
-ELEC_EXPENSIVE_CKWH   = 15.0
+ELEC_CHEAP_CKWH       = 15.0
+ELEC_EXPENSIVE_CKWH   = 25.0
 # Draw horizontal rule lines at the threshold levels
 ELEC_DRAW_THRESHOLDS  = True
