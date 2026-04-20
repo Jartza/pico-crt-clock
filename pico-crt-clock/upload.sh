@@ -11,8 +11,10 @@ FILES=(
     main.py
     common.py
     weather.py
-    torus.py
     news.py
+    sky.py
+    electricity.py
+    torus.py
     icons.bin
     torus.bin
 )
