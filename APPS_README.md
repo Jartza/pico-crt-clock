@@ -24,7 +24,7 @@ These are the main lessons repeated across the bundled apps.
 
 - Composite video rendering is continuous. The picture is being generated all the
   time, line by line, so drawing work that happens while the visible part of a
-  frame is being sent can show up as shimmer or flicker on real hardware.
+  frame is being drawn can show up as shimmer or flicker on real hardware.
 - `gfx.wait_vblank()` waits for the vertical blanking interval: the short gap
   between frames when the display is not showing active picture lines. That is
   the safest time to do the actual framebuffer updates that must appear together
@@ -36,6 +36,27 @@ These are the main lessons repeated across the bundled apps.
   and “redraw only when state changes” logic matter more on hardware than they
   do in the simulator.
 - Treat RP2040 MicroPython math as single-precision. If a formula depends on very large floating-point values, reduce the epoch or precompute it elsewhere.
+
+## A Note About Composite Video
+
+If you grew up with framebuffer APIs and LCDs, composite video timing can feel a
+bit alien. The important thing here is that the screen is not updated all at
+once. The picture is drawn continuously, from top to bottom, one scanline at a
+time.
+
+- The ideal case is to finish the whole visible update during vertical blank, so
+  the next frame starts from a fully updated framebuffer.
+- If the vertical blanking interval is not long enough for everything, draw the
+  most important screen changes first.
+- In that situation, drawing from top to bottom can still help. Because the
+  display is also drawn from top to bottom, that order gives the upper part of
+  the picture the best chance of being finished before those lines are drawn on
+  screen.
+- This does not remove artifacts completely, but it often looks better than
+  bottom-first updates or drawing in an arbitrary order.
+- For that reason, screen layout matters. Important static information near the
+  top of the screen is often easier to keep visually stable than content that is
+  constantly changing everywhere at once.
 
 ## Weather
 
