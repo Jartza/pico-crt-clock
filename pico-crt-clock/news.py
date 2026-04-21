@@ -970,3 +970,6 @@ def run(pin=None, modes=None):
                 pass   # re-show same article in new mode
             else:
                 idx += 1
+        if idx >= len(files):
+            _save_current(0)
+            current_saved = 0
