@@ -58,6 +58,27 @@ time.
   top of the screen is often easier to keep visually stable than content that is
   constantly changing everywhere at once.
 
+## Why The Screensavers Move The Picture
+
+Several bundled apps gently move the whole visible layout around the screen.
+That is mainly burn-in mitigation, not just a visual effect.
+
+- Older display technologies such as CRTs and plasma panels can develop
+  persistent wear or image retention if the same bright shapes stay in the same
+  place for very long periods.
+- A clock, chart, or title bar that never moves is exactly the kind of content
+  that can leave visible long-term artifacts on those displays.
+- Shifting the whole composition by a few pixels spreads that wear across a
+  slightly larger area and helps avoid a permanent “ghost” of the UI.
+- On more modern LCD-style displays, this is usually much less important, so
+  people adapting these apps to newer hardware may decide that a fully static
+  layout is acceptable.
+- That does not automatically remove composite-video timing concerns. If the
+  picture is actively changing, draw timing and vertical blank still matter on
+  this output path. The main difference is that if you no longer need to move
+  the whole screen for burn-in reasons, there is less changing content to worry
+  about in the first place.
+
 ## Weather
 
 Weather is the simplest example of a network-backed dashboard app.
