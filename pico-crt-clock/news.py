@@ -85,6 +85,8 @@ _WATCHDOG_BASE = 0x40058000
 _SCRATCH_MAGIC = _WATCHDOG_BASE + 0x0C
 _SCRATCH_INDEX = _WATCHDOG_BASE + 0x10
 _SCRATCH_NEWS_MAGIC = 0x4E455753   # "NEWS"
+_HEADER_CACHE_KEY = None
+_HEADER_CACHE_LINE = ''
 
 wlan = None
 
@@ -575,20 +577,26 @@ def _list_files():
 # Drawing
 def _header_line(section='', idx=None, total=None):
     """Return the header clock line with article counter at the upper left."""
+    global _HEADER_CACHE_KEY, _HEADER_CACHE_LINE
+
     ts = time.time()
     t  = time.localtime(ts + _utc_offset(ts))
-    h, m = t[3], t[4]
+    yr, mo, d, h, m = t[0], t[1], t[2], t[3], t[4]
+    cache_key = (yr, mo, d, h, m, section, idx, total)
+    if cache_key == _HEADER_CACHE_KEY:
+        return _HEADER_CACHE_LINE
+
     if CLOCK_12H:
         sfx  = 'am' if h < 12 else 'pm'
         h    = h % 12 or 12
         tstr = '{}:{:02d}{}'.format(h, m, sfx)
     else:
         tstr = '{:02d}:{:02d}'.format(h, m)
-    d, mo, yr = t[2], t[1], t[0]
+    yr %= 100
     sep = DATE_SEP
-    if DATE_ORDER == 'MDY':   dstr = '{}{}{}{}{}'.format(mo, sep, d,  sep, yr)
-    elif DATE_ORDER == 'YMD': dstr = '{}{}{}{}{}'.format(yr, sep, mo, sep, d)
-    else:                     dstr = '{}{}{}{}{}'.format(d,  sep, mo, sep, yr)
+    if DATE_ORDER == 'MDY':   dstr = '{}{}{}{}{:02d}'.format(mo, sep, d,  sep, yr)
+    elif DATE_ORDER == 'YMD': dstr = '{:02d}{}{}{}{}'.format(yr, sep, mo, sep, d)
+    else:                     dstr = '{}{}{}{}{:02d}'.format(d,  sep, mo, sep, yr)
     line = tstr + '  ' + dstr
     if section:
         line += '  ' + section[0].upper() + section[1:]
@@ -596,12 +604,15 @@ def _header_line(section='', idx=None, total=None):
         line = '{}/{}  {}'.format(idx + 1, total, line)
     if len(line) > CHARS_BODY:
         line = line[:CHARS_BODY]
-    return line
+    _HEADER_CACHE_KEY = cache_key
+    _HEADER_CACHE_LINE = line
+    return _HEADER_CACHE_LINE
 
-def _draw_header(t1, t2, section='', idx=None, total=None):
+def _draw_header(t1, t2, section='', idx=None, total=None, clk=None):
     """Redraw pinned clock + title + separator each scroll step.
     Clears the full header rows before redrawing to avoid stale text."""
-    clk = _header_line(section, idx, total)
+    if clk is None:
+        clk = _header_line(section, idx, total)
 
     # Clear scrolling artifacts
     for yy in range(CLOCK_Y, CLOCK_Y + 8):
@@ -637,12 +648,7 @@ def _show_article(filename, pin, mode_counter, mode_expected,
 
         # Initial screen: cls clears everything, then draw header + body directly
         gfx.cls(BLACK)
-        clk = _header_line(section, idx, total)
-        gfx.print_string(0, CLOCK_Y, clk, BLACK, WHITE)
-        gfx.print_string((256 - len(t1)  * 8) // 2, TITLE_Y1, t1,  BLACK, WHITE)
-        if t2:
-            gfx.print_string((256 - len(t2) * 8) // 2, TITLE_Y2, t2, BLACK, WHITE)
-        gfx.line(0, SEP_Y, 255, SEP_Y, 7)
+        _draw_header(t1, t2, section, idx, total)
         shown = 0
         for _ in range(BODY_LINES):
             line = f.readline()
@@ -682,9 +688,10 @@ def _show_article(filename, pin, mode_counter, mode_expected,
             if swap:
                 gfx.cls(BLACK)
                 return 'SWAP', mode_counter, c13, e13, c14, e14
+            clk = _header_line(section, idx, total)
             gfx.wait_vblank()
             gfx.scroll_up(BLACK, 1)
-            _draw_header(t1, t2, section, idx, total)
+            _draw_header(t1, t2, section, idx, total, clk)
             sub_px += 1
             gfx.print_string(0, 192 - sub_px, nxtline, BLACK, WHITE)
             if sub_px == LINE_H:
