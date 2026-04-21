@@ -36,7 +36,8 @@ Optional extras that can be added to `APPS`:
 If no GPIO is pulled low, the first entry in `APPS` runs by default.
 
 For a deeper look at how the bundled apps are implemented, including the RAM-
-saving and flicker-reduction techniques used in each one, see
+saving and flicker-reduction techniques used in each one, see the app
+technical notes in
 [APPS_README.md](APPS_README.md).
 
 ---

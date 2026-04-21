@@ -1,7 +1,7 @@
-# App Engineering Guide
+# App Technical Info
 
 This document complements the main [README](README.md). The top-level README
-explains what the firmware is and how to build it; this guide focuses on how
+explains what the firmware is and how to build it; this document focuses on how
 the bundled apps are put together and which patterns have proven useful on
 RP2040 + MicroPython + composite video.
 
@@ -22,10 +22,19 @@ it also works as a more detailed catalog of the bundled examples.
 
 These are the main lessons repeated across the bundled apps.
 
+- Composite video rendering is continuous. The picture is being generated all the
+  time, line by line, so drawing work that happens while the visible part of a
+  frame is being sent can show up as shimmer or flicker on real hardware.
+- `gfx.wait_vblank()` waits for the vertical blanking interval: the short gap
+  between frames when the display is not showing active picture lines. That is
+  the safest time to do the actual framebuffer updates that must appear together
+  on screen.
 - Prefer flash-backed caches over keeping large network payloads in RAM. The weather, news, sky, and electricity apps all fetch into cache files and then load only what they need.
 - Give the user a short escape window before starting a fetch. Weather, sky, and electricity all show a banner and poll the mode pin before beginning network I/O and flash writes.
 - Reuse prebuilt draw buffers when a shape repeats. On RP2040, a few `gfx.blit()` calls are often cheaper and steadier than redrawing the same geometry in Python every frame.
-- Keep per-frame work small. Stable headers, cached tiles, and “redraw only when state changes” logic matter more on hardware than they do in the simulator.
+- Keep the work done for each visible frame small. Stable headers, cached tiles,
+  and “redraw only when state changes” logic matter more on hardware than they
+  do in the simulator.
 - Treat RP2040 MicroPython math as single-precision. If a formula depends on very large floating-point values, reduce the epoch or precompute it elsewhere.
 
 ## Weather
@@ -50,14 +59,19 @@ News is the most demanding bundled app from both RAM and flicker perspectives.
 - It fetches Guardian responses one article at a time and writes them to temporary files, rather than keeping the whole feed in RAM.
 - It parses and stores article content into local text files in `newscache/`, including separate summary files, so display mode switches do not need to hit the network again.
 - Cached article ordering metadata lives in `newscache/index.txt`, and the current article index is stored in RP2040 watchdog scratch registers instead of a flash-backed state file. That avoids extra flash churn during article browsing.
-- Full-mode scrolling is optimized around the video frame boundary: non-drawing work such as building the header line is done before `gfx.wait_vblank()`, and the actual scroll + header redraw + incoming line draw are grouped tightly after sync.
+- Full-mode scrolling is optimized around the video frame boundary: setup work
+  such as building the header line is done before `gfx.wait_vblank()`, and the
+  actual scroll + header redraw + incoming line draw are grouped tightly after
+  sync during vertical blank.
 - The header line itself is cached by minute/article context, so it is not rebuilt on every scroll step.
 - RSVP mode reduces redraw cost by only clearing and repainting the word row while keeping the header structure stable.
 
 Why it matters for new apps:
 
 - Use this as the model when an app needs large fetched content, multiple presentation modes, or scroll-heavy rendering.
-- The main lesson is to move as much work as possible out of the hot display loop, and to persist navigation state without writing a file every time.
+- The main lesson is to move as much work as possible out of the time-critical
+  display loop, and to persist navigation state without writing a file every
+  time.
 
 ## Sky
 
@@ -111,5 +125,7 @@ If you are adding your own app, the bundled examples suggest a few practical def
 - Cache fetched payloads to flash and derive smaller Python-side structures from them.
 - When a visual repeats, pre-render it into a sprite or tile and `blit` it.
 - Redraw on state changes when possible, not just because the main loop iterated.
-- Keep hot paths boring: avoid repeated string assembly, large JSON work, or complex math inside a per-frame loop.
+- Keep the time-critical drawing path boring: avoid repeated string assembly,
+  large JSON work, or complex math inside code that runs for every displayed
+  frame.
 - Test on real hardware early. The simulator is useful for logic and layout, but flicker, float precision, and heap pressure often show up only on RP2040.
