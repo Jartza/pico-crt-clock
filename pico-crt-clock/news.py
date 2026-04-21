@@ -495,12 +495,12 @@ def _fetch_and_store():
                 seq += 1
                 gc.collect()
         gfx.cls(BLACK)
-        draw_banner("Sorting news...")
         fetched.sort(reverse=True)
 
         count = 0
         meta = []
         for pubkey, _, section, tlines, tmppath in fetched:
+            draw_banner("Parsing news...", "{:02d}/{:02d}".format(count + 1, total))
             # Write summary file: title + section + trailText (HTML, same stripper as body)
             sumpath = '{}/news_{:02d}_sum.txt'.format(NEWS_DIR, count)
             with open(sumpath, 'w') as out:
@@ -610,7 +610,6 @@ def _draw_header(t1, t2, section='', idx=None, total=None):
     gfx.line(0, TITLE_Y2 - 1, 255, TITLE_Y2 - 1, BLACK)
     gfx.line(0, SEP_Y - 1, 255, SEP_Y - 1, BLACK)
     gfx.line(0, SEP_Y + 6, 255, SEP_Y + 6, BLACK)
-    gfx.line(0, SEP_Y + 7, 255, SEP_Y + 7, BLACK)
 
     # Draw date/time, header lines and separator
     gfx.line(0, SEP_Y,     255, SEP_Y,     7)
