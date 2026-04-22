@@ -28,6 +28,8 @@ CHART_X0  = SAFE_X + (224 - CHART_W) // 2   # centre chart inside safe area
 FOOTER_Y  = 160          # first footer row
 SS_OX_MAX = 16
 SS_OY_MAX = 8
+SS_OX_CENTER = 0
+SS_OY_CENTER = 0
 CHART_TILE_W = 35
 CHART_TILE_H = CHART_H
 CHART_TILE_WIDTHS = (35, 35, 35, 35, 35, 35, 6)
@@ -512,15 +514,29 @@ def run(pin=None, modes=None):
             d_str = DATE_SEP.join(dp[c] for c in DATE_ORDER)
             _draw_all(ox, oy, t_str, d_str, prices, chart_hour, chart_state, view_mode)
 
-        ss_speed = (read_speed_adc() >> 3) if USE_ADC_SPEED else SCREENSAVER_SPEED
-        if ss_speed < 999 and time.ticks_diff(time.ticks_ms(), last_mv) >= (ss_speed * 50):
+        ss_speed = get_screensaver_speed()
+        ss_delay = 100 if ss_speed == 999 else (ss_speed * 50)
+        if time.ticks_diff(time.ticks_ms(), last_mv) >= ss_delay:
             last_mv = time.ticks_ms()
-            ox += vx;  oy += vy
-            if ox >=  SS_OX_MAX: ox =  SS_OX_MAX;  vx = -1
-            elif ox <= -SS_OX_MAX: ox = -SS_OX_MAX; vx = 1
-            if oy >=  SS_OY_MAX: oy =  SS_OY_MAX;  vy = -1
-            elif oy <= -SS_OY_MAX: oy = -SS_OY_MAX; vy = 1
-            last_s = -1
+            if ss_speed == 999:
+                moved = False
+                if ox > SS_OX_CENTER:
+                    ox -= 1; moved = True
+                elif ox < SS_OX_CENTER:
+                    ox += 1; moved = True
+                if oy > SS_OY_CENTER:
+                    oy -= 1; moved = True
+                elif oy < SS_OY_CENTER:
+                    oy += 1; moved = True
+                if moved:
+                    last_s = -1
+            else:
+                ox += vx;  oy += vy
+                if ox >=  SS_OX_MAX: ox =  SS_OX_MAX;  vx = -1
+                elif ox <= -SS_OX_MAX: ox = -SS_OX_MAX; vx = 1
+                if oy >=  SS_OY_MAX: oy =  SS_OY_MAX;  vy = -1
+                elif oy <= -SS_OY_MAX: oy = -SS_OY_MAX; vy = 1
+                last_s = -1
 
         # Only re-check on hour changes, so we don't hammer the API on any
         # transient parse failure.  When the hour rolls over (usually across

@@ -43,6 +43,8 @@ GRAYBAR_Y      = 160    # grayscale calibration bar (256x32 px)
 #   left=24, right=232, top=0, bottom=129  ->  ox in [-24,+24], oy in [0,63]
 SS_OX_MAX = 24
 SS_OY_MAX = 63
+SS_OX_CENTER = 0
+SS_OY_CENTER = SS_OY_MAX // 2
 
 # Weekday constants for date display.  Adjust to your locale as needed.
 DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
@@ -289,7 +291,7 @@ def run(pin=None):
     last_h         = _boot_h
     last_start_day = 1 if FORECAST_NEXT_DAY_HOUR > 0 and _boot_h >= FORECAST_NEXT_DAY_HOUR else 0
     last_move      = time.ticks_ms()
-    ox, oy = 0, 0
+    ox, oy = SS_OX_CENTER, SS_OY_CENTER
     vx, vy = 1, 1
     pincounter = 0
 
@@ -342,20 +344,33 @@ def run(pin=None):
             if _today_hrs is not None and _today_hrs[h] is not None:
                 cur_temp = _today_hrs[h]
 
-        _ss_speed = (read_speed_adc() >> 3) if USE_ADC_SPEED else SCREENSAVER_SPEED
-        if _ss_speed < 999 and time.ticks_diff(time.ticks_ms(), last_move) >= (_ss_speed * 50):
+        _ss_speed = get_screensaver_speed()
+        _ss_delay = 100 if _ss_speed == 999 else (_ss_speed * 50)
+        if time.ticks_diff(time.ticks_ms(), last_move) >= _ss_delay:
             last_move = time.ticks_ms()
-            ox += vx
-            oy += vy
-            if ox >= SS_OX_MAX:
-                ox = SS_OX_MAX;  vx = -1
-            elif ox <= -SS_OX_MAX:
-                ox = -SS_OX_MAX; vx =  1
-            if oy >= SS_OY_MAX:
-                oy = SS_OY_MAX;  vy = -1
-            elif oy <= 0:
-                oy = 0;          vy =  1
-            last_sec = s
+            if _ss_speed == 999:
+                if ox > SS_OX_CENTER:
+                    ox -= 1
+                elif ox < SS_OX_CENTER:
+                    ox += 1
+                if oy > SS_OY_CENTER:
+                    oy -= 1
+                elif oy < SS_OY_CENTER:
+                    oy += 1
+                if ox != SS_OX_CENTER or oy != SS_OY_CENTER:
+                    last_sec = s
+            else:
+                ox += vx
+                oy += vy
+                if ox >= SS_OX_MAX:
+                    ox = SS_OX_MAX;  vx = -1
+                elif ox <= -SS_OX_MAX:
+                    ox = -SS_OX_MAX; vx =  1
+                if oy >= SS_OY_MAX:
+                    oy = SS_OY_MAX;  vy = -1
+                elif oy <= 0:
+                    oy = 0;          vy =  1
+                last_sec = s
 
         draw_all(time_str, date_str, cur_temp, wind_speed, weather, ox, oy,
                  temp_col=WHITE if weather_ok else 10)

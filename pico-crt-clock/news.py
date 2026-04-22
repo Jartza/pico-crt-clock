@@ -27,7 +27,6 @@ CHARS_BODY  = 256 // 8    # 32
 HOLD_MS         = NEWS_HOLD       * 1000
 HOLD_SUM_MS     = NEWS_HOLD_SUM   * 1000
 HOLD_AFTER_MS   = NEWS_HOLD_AFTER * 1000
-SCROLL_DELAY_MS = NEWS_SCROLL_SPEED
 
 # RSVP (rapid serial visual presentation) layout
 # Header occupies y=0..39 (unchanged, drawn with _draw_header).
@@ -698,7 +697,7 @@ def _show_article(filename, pin, mode_counter, mode_expected,
                 sub_px = 0
                 nxt     = f.readline()
                 nxtline = nxt.rstrip() if nxt else None
-            time.sleep_ms(read_speed_adc() if USE_ADC_SPEED else SCROLL_DELAY_MS)
+            time.sleep_ms((read_speed_adc() + 25) if USE_ADC_SPEED else NEWS_SCROLL_SPEED)
 
     deadline = time.ticks_add(time.ticks_ms(), HOLD_AFTER_MS)
     while time.ticks_diff(deadline, time.ticks_ms()) > 0:

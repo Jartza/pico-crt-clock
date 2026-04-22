@@ -15,7 +15,7 @@ __all__ = [
     'BLACK', 'WHITE', 'WIFI_TIMEOUT_MS',
     '_weekday', '_last_sunday', '_utc_offset',
     'draw_banner', 'connect_wifi', 'reconnect_wifi', 'sync_ntp', 'check_pin_stable',
-    'read_speed_adc', 'stream_get',
+    'read_speed_adc', 'get_screensaver_speed', 'stream_get',
 ]
 
 BLACK = 0
@@ -153,13 +153,19 @@ def stream_get(url, filename, chunk_size=512, timeout=30):
 _speed_adc = None
 
 def read_speed_adc():
-    """Read speed potentiometer on GPIO 26. Returns 0-255, or None if USE_ADC_SPEED is False."""
+    """Read speed potentiometer from ADC_SPEED_PIN. Returns 0-255, or None if USE_ADC_SPEED is False."""
     global _speed_adc
     if not USE_ADC_SPEED:
         return None
     if _speed_adc is None:
-        _speed_adc = machine.ADC(26)
+        _speed_adc = machine.ADC(ADC_SPEED_PIN)
     return _speed_adc.read_u16() >> 8
+
+def get_screensaver_speed():
+    if not USE_ADC_SPEED:
+        return SCREENSAVER_SPEED
+    bucket = read_speed_adc() * 16 // 256
+    return 999 if bucket == 0 else (16 - bucket)
 
 # For mode switching: require a pin mismatch to persist for threshold milliseconds
 # before treating it as a real state change. The counter stores the first

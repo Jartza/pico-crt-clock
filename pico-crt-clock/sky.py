@@ -30,6 +30,8 @@ AUR_X    = 16           # chart left edge (= SAFE_X)
 AUR_W    = 224          # chart width in pixels (8 bars * 28 px, full safe width)
 SS_OX_MAX = 16
 SS_OY_MAX = 8
+SS_OX_CENTER = 0
+SS_OY_CENTER = 0
 MOON_DARK = 3           # grey shade for the unlit side (earthshine feel)
 
 PHASE_NAMES = (
@@ -411,15 +413,29 @@ def run(pin=None):
 
         # Screensaver: gentle DVD bounce so static blocks (moon, sparkline)
         # don't burn into the CRT.
-        ss_speed = (read_speed_adc() >> 3) if USE_ADC_SPEED else SCREENSAVER_SPEED
-        if ss_speed < 999 and time.ticks_diff(time.ticks_ms(), last_mv) >= (ss_speed * 50):
+        ss_speed = get_screensaver_speed()
+        ss_delay = 100 if ss_speed == 999 else (ss_speed * 50)
+        if time.ticks_diff(time.ticks_ms(), last_mv) >= ss_delay:
             last_mv = time.ticks_ms()
-            ox += vx;  oy += vy
-            if ox >=  SS_OX_MAX: ox =  SS_OX_MAX;  vx = -1
-            elif ox <= -SS_OX_MAX: ox = -SS_OX_MAX; vx = 1
-            if oy >=  SS_OY_MAX: oy =  SS_OY_MAX;  vy = -1
-            elif oy <= -SS_OY_MAX: oy = -SS_OY_MAX; vy = 1
-            last_s = -1   # force redraw next tick
+            if ss_speed == 999:
+                moved = False
+                if ox > SS_OX_CENTER:
+                    ox -= 1; moved = True
+                elif ox < SS_OX_CENTER:
+                    ox += 1; moved = True
+                if oy > SS_OY_CENTER:
+                    oy -= 1; moved = True
+                elif oy < SS_OY_CENTER:
+                    oy += 1; moved = True
+                if moved:
+                    last_s = -1   # force redraw next tick
+            else:
+                ox += vx;  oy += vy
+                if ox >=  SS_OX_MAX: ox =  SS_OX_MAX;  vx = -1
+                elif ox <= -SS_OX_MAX: ox = -SS_OX_MAX; vx = 1
+                if oy >=  SS_OY_MAX: oy =  SS_OY_MAX;  vy = -1
+                elif oy <= -SS_OY_MAX: oy = -SS_OY_MAX; vy = 1
+                last_s = -1   # force redraw next tick
 
         # Periodic refetch
         if time.time() - last_fetch_ts >= SKY_INTERVAL:

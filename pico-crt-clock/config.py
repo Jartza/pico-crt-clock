@@ -105,10 +105,12 @@ WIND_UNIT = "ms"
 # 999 = disabled (never move the screen)
 SCREENSAVER_SPEED = 2
 
-# Set USE_ADC_SPEED = True to use a potentiometer on GPIO 26 to adjust the
-# weather clock screensaver speed and newsreader scroll speed instead of the
+# Set USE_ADC_SPEED = True to use a potentiometer to adjust the weather/sky/
+# electricity screensaver speed and the newsreader scroll speed instead of the
 # configured values above.
 USE_ADC_SPEED = False
+# ADC-capable RP2040 GPIOs are 26, 27, 28 and 29 (ADC0..ADC3).
+ADC_SPEED_PIN = 26
 
 # --- sky ---
 # Aurora / KP-index forecast refresh interval (seconds)
