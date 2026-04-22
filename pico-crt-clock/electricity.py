@@ -515,7 +515,7 @@ def run(pin=None, modes=None):
             _draw_all(ox, oy, t_str, d_str, prices, chart_hour, chart_state, view_mode)
 
         ss_speed = get_screensaver_speed()
-        ss_delay = 100 if ss_speed == 999 else (ss_speed * 50)
+        ss_delay = 50 if ss_speed == 999 else (ss_speed * 50)
         if time.ticks_diff(time.ticks_ms(), last_mv) >= ss_delay:
             last_mv = time.ticks_ms()
             if ss_speed == 999:

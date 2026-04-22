@@ -345,7 +345,7 @@ def run(pin=None):
                 cur_temp = _today_hrs[h]
 
         _ss_speed = get_screensaver_speed()
-        _ss_delay = 100 if _ss_speed == 999 else (_ss_speed * 50)
+        _ss_delay = 50 if _ss_speed == 999 else (_ss_speed * 50)
         if time.ticks_diff(time.ticks_ms(), last_move) >= _ss_delay:
             last_move = time.ticks_ms()
             if _ss_speed == 999:

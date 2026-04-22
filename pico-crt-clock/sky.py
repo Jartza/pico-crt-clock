@@ -414,7 +414,7 @@ def run(pin=None):
         # Screensaver: gentle DVD bounce so static blocks (moon, sparkline)
         # don't burn into the CRT.
         ss_speed = get_screensaver_speed()
-        ss_delay = 100 if ss_speed == 999 else (ss_speed * 50)
+        ss_delay = 50 if ss_speed == 999 else (ss_speed * 50)
         if time.ticks_diff(time.ticks_ms(), last_mv) >= ss_delay:
             last_mv = time.ticks_ms()
             if ss_speed == 999:
