@@ -1,28 +1,35 @@
-from machine import Pin, soft_reset
-import time
-try:
-    from config_local import APPS
-except ImportError:
-    from config import APPS
+from common import *
 
-# Build one pull-up input pin per app entry; the first pin that reads low
-# selects that app.  If nothing is pulled low, APPS[0] runs as the default.
-_pins = [(entry, Pin(entry[1], Pin.IN, Pin.PULL_UP)) for entry in APPS]
 
-time.sleep(0.1)  # debounce delay for mode switches
+BORDER = 7
+ROWS = 26
+COLS = 32
+FILL = "0123456789ABCDEFGHIJKLMNOPQR|"
 
-selected = None
-for entry, pin in _pins:
-    if not pin.value():
-        selected = (entry, pin)
-        break
-if selected is None:
-    selected = (_pins[0][0], None)   # no switch pressed -> default, no pin to watch
 
-entry, pin = selected
-module_name = entry[0]
-extras      = entry[2] if len(entry) > 2 else {}
+def _line_text(row):
+    return ("{:02d} ".format(row) + FILL)[:COLS]
 
-mod = __import__(module_name)
-mod.run(pin, **extras)
-soft_reset()
+
+def _draw_test_pattern():
+    gfx.set_border(BORDER)
+    gfx.cls(BLACK)
+    for row in range(ROWS):
+        gfx.print_string(0, row * 8, _line_text(row), BLACK, WHITE)
+
+
+def run(pin=None, **extras):
+    gfx.init()
+    _draw_test_pattern()
+
+    counter = 0
+    while True:
+        gfx.wait_vblank()
+        active, counter = check_pin_stable(pin, 0, counter)
+        if not active:
+            return
+        time.sleep_ms(50)
+
+
+if __name__ == "__main__":
+    run()

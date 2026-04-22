@@ -110,6 +110,8 @@ static mp_obj_t gfx_cls(mp_obj_t c_in) {
 static MP_DEFINE_CONST_FUN_OBJ_1(gfx_cls_obj, gfx_cls);
 
 // gfx.wait_vblank()
+// Returns once scanout reaches the lower border, i.e. the earliest safe point
+// to start drawing the next frame without touching the currently visible area.
 static mp_obj_t gfx_wait_vblank(void) {
     gfx_cmd_t cmd = { .type = CMD_WAIT_VBLANK };
     push(&cmd);

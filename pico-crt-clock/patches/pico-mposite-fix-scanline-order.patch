@@ -1,19 +1,22 @@
-diff --git a/cvideo.c b/cvideo.c
 --- a/cvideo.c
 +++ b/cvideo.c
-@@ -279,10 +279,14 @@
+@@ -278,13 +278,17 @@
  
          // Then the border scanlines
          //
--        case 6 ... 68:
-+        case 6 ... 67:
-         case 261 ... 309:
+-        case 6 ... 60:
++        case 6 ... 59:
+         case 269 ... 309:
+             if (vline == 269) {
+                 vblank_count++;                  // Lower border start: safe point for next-frame drawing
+             }
              dma_channel_set_read_addr(dma_channel_0, border, true);
              break;
-+        case 68:    // Last top-border line: re-anchor bline so bitmap[0] is at top
++        case 60:    // Last top-border line: re-anchor bline so bitmap[0] is at top
 +            dma_channel_set_read_addr(dma_channel_0, border, true);
 +            bline = 1;
 +            break;
  
          // Now point the dma at the first buffer for the pixel data,
          // and preload the data for the next scanline
++EOF

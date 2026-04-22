@@ -26,7 +26,7 @@ typedef enum {
     CMD_SCROLL_UP,
     CMD_BLIT,
     CMD_SET_BORDER,
-    CMD_WAIT_VBLANK,    // core1 drains this by blocking until next vblank
+    CMD_WAIT_VBLANK,    // core1 drains this by blocking until lower border starts
     CMD_DEINIT,         // stop PIO/DMA/IRQs; core1 parks after this
 } gfx_cmd_type_t;
 
