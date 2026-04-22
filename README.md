@@ -445,11 +445,10 @@ You can also configure just one of the optional detail GPIOs if you only want
 two modes, for example `{"default": "summary", 14: "rsvp"}`.
 Like app selection, this can be any generic switch arrangement that pulls one
 detail GPIO at a time to GND. The intentionally unconnected switch position in
-the example below simply leaves the detail GPIOs unselected, so the app stays
-in its configured default mode. The internal pull-ups are weak, so an external
-`10k` pull-up to `3V3` on each detail GPIO is recommended.
-
-![Example GPIO wiring for a local app-mode switch](img/GPIO_local_switch.png)
+the example in [Configuring apps](#configuring-apps) simply leaves the detail
+GPIOs unselected, so the app stays in its configured default mode. The
+internal pull-ups are weak, so an external `10k` pull-up to `3V3` on each
+detail GPIO is recommended.
 
 You need your own Guardian Open Platform API key (free, 5000 requests/day):
 
