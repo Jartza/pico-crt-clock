@@ -441,6 +441,15 @@ Flipping the detail switch mid-article clears the screen and reloads the same
 story in the new mode.  The GPIO pins used for the detail switch are mapped by
 the `modes` dict in the `APPS` entry — see [Configuring apps](#configuring-apps).
 Omit the GPIO keys to lock news to a single reading mode and save two pins.
+You can also configure just one of the optional detail GPIOs if you only want
+two modes, for example `{"default": "summary", 14: "rsvp"}`.
+Like app selection, this can be any generic switch arrangement that pulls one
+detail GPIO at a time to GND. The intentionally unconnected switch position in
+the example below simply leaves the detail GPIOs unselected, so the app stays
+in its configured default mode. The internal pull-ups are weak, so an external
+`10k` pull-up to `3V3` on each detail GPIO is recommended.
+
+![Example GPIO wiring for a local app-mode switch](img/GPIO_local_switch.png)
 
 You need your own Guardian Open Platform API key (free, 5000 requests/day):
 
@@ -472,6 +481,7 @@ If the app entry includes `modes={"default": "today", <gpio>: "tomorrow"}`,
 pulling that detail GPIO low switches to tomorrow's chart after Nord Pool day-
 ahead prices have been published. Before that, the chart area shows a
 `No SPOT data for tomorrow yet, update at HH:MM local` hint.
+This uses the same local mode-switch wiring pattern shown above for news.
 
 Bars below `ELEC_CHEAP_CKWH` are dark grey, bars from `ELEC_CHEAP_CKWH` up to
 `ELEC_EXPENSIVE_CKWH` are light grey, and bars above `ELEC_EXPENSIVE_CKWH` are
@@ -518,16 +528,32 @@ APPS = [
 ```
 
 - The first entry is the default app when no GPIO is pulled low.
-- Wire each GPIO through a switch position to GND to select that app.
+- To select apps, pull one GPIO low at a time through any simple switch that
+  can connect the chosen pin to GND. It does not need to be a slide switch.
+- Only the Pico W's weak internal pull-ups are enabled by default. For real
+  hardware, use an external `10k` pull-up resistor from each app-select GPIO
+  to `3V3` so the idle state stays solid.
 - Comment out any app you don't want; change the GPIOs to match your wiring.
 - For news, the `modes` dict maps GPIO numbers to reading modes, with
   `"default"` as the mode shown when no mapped pin is low.  Omit the integer
   keys entirely (e.g. `{"default": "full"}`) to lock news to one mode and free
-  up those GPIOs.
+  up those GPIOs. You can also map just one detail GPIO if you only want two
+  modes.
 - Electricity uses the same `modes` pattern. For example,
   `{"default": "today", 13: "tomorrow"}` reuses the same secondary switch
   style as news. If electricity has no integer GPIO keys, it ignores detail
   GPIOs entirely and stays on its default view.
+- The local mode switch does not need to drive every possible position. Leaving
+  a switch position unconnected is valid and simply falls back to the
+  `"default"` mode when no configured detail GPIO is pulled low.
+
+Example wiring for app selection:
+
+![Example GPIO wiring for selecting apps](img/GPIO_switch.png)
+
+Example wiring for a local app-mode switch:
+
+![Example GPIO wiring for a local app-mode switch](img/GPIO_local_switch.png)
 
 ---
 

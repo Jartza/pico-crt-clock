@@ -1,3 +1,28 @@
+# Apps available on this device, in switch-position order.
+# Each entry is a tuple: (module_name, gpio) or (module_name, gpio, extras_dict).
+# Pull a GPIO to GND via your mode-select switch to activate that app.  If no
+# switch is pressed, the FIRST entry runs as the default.
+#
+# To run fewer apps: comment out lines you don't want.  To remap GPIOs to
+# match your wiring: edit the numbers.  First entry = default app.
+#
+# The news entry's "modes" dict maps GPIO numbers to the reading mode they
+# activate when pulled to GND, with "default" as the mode used when no mapped
+# pin is pulled low.  Valid modes are "full", "summary", "rsvp".  Wire any
+# subset of pins - e.g. {"default": "full"} with no GPIO keys locks news to
+# full-article mode and needs no detail switch.
+#
+# The electricity app also accepts a "modes" dict. If omitted, electricity
+# ignores any detail GPIOs and stays on its default view. To share the same
+# secondary switch style as news, use {"default": "today", 13: "tomorrow"}.
+APPS = [
+    ("weather", 10),
+    ("news",    12, {"modes": {"default": "summary", 13: "full", 14: "rsvp"}}),
+    ("sky",     11),
+    # ("electricity", 15, {"modes": {"default": "today", 13: "tomorrow"}}),
+    # ("torus",       11),          # legacy 3D demo; swap for "sky" above if wanted
+]
+
 WIFI_SSID = "wifiname"
 WIFI_PASS = "password"
 
@@ -84,31 +109,6 @@ SCREENSAVER_SPEED = 2
 # weather clock screensaver speed and newsreader scroll speed instead of the
 # configured values above.
 USE_ADC_SPEED = False
-
-# Apps available on this device, in switch-position order.
-# Each entry is a tuple: (module_name, gpio) or (module_name, gpio, extras_dict).
-# Pull a GPIO to GND via your mode-select switch to activate that app.  If no
-# switch is pressed, the FIRST entry runs as the default.
-#
-# To run fewer apps: comment out lines you don't want.  To remap GPIOs to
-# match your wiring: edit the numbers.  First entry = default app.
-#
-# The news entry's "modes" dict maps GPIO numbers to the reading mode they
-# activate when pulled to GND, with "default" as the mode used when no mapped
-# pin is pulled low.  Valid modes are "full", "summary", "rsvp".  Wire any
-# subset of pins - e.g. {"default": "full"} with no GPIO keys locks news to
-# full-article mode and needs no detail switch.
-#
-# The electricity app also accepts a "modes" dict. If omitted, electricity
-# ignores any detail GPIOs and stays on its default view. To share the same
-# secondary switch style as news, use {"default": "today", 13: "tomorrow"}.
-APPS = [
-    ("weather", 10),
-    ("news",    12, {"modes": {"default": "summary", 13: "full", 14: "rsvp"}}),
-    ("sky",     11),
-    # ("electricity", 15, {"modes": {"default": "today", 13: "tomorrow"}}),
-    # ("torus",       11),          # legacy 3D demo; swap for "sky" above if wanted
-]
 
 # --- sky ---
 # Aurora / KP-index forecast refresh interval (seconds)
