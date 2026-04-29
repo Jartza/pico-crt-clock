@@ -2,5 +2,11 @@
 build-*/
 CLAUDE.md
 .claude/
+
+# Generated app/runtime caches
+__pycache__/
+pico-crt-clock/eleccache/
 pico-crt-clock/newscache/
+pico-crt-clock/skycache/
+pico-crt-clock/weathercache/
 pico-crt-clock/config_local.py
