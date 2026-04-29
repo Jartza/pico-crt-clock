@@ -36,10 +36,10 @@
  unsigned short hsync[32] = {
 -    HSLO, HSLO, HSHI, HSHI, HSHI, HSHI, BORD, BORD, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 -    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, BORD, BORD, BORD,
-+    HSLO, HSLO, HSHI, HSHI, HSHI, HSHI, BORD, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, BORD, BORD,
++    HSLO, HSLO, HSHI, HSHI, HSHI, HSHI, BORD, BORD, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
++    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, BORD, BORD, BORD,
  };
- 
+
  // Horizontal sync for top and bottom borders
 @@ -122,7 +125,11 @@
  		gpio_base,								// Start pin in the GPIO
@@ -257,13 +257,13 @@
 +++ b/cvideo.h
 @@ -18,7 +18,7 @@
  #include "config.h"
- 
+
  #define piofreq_0 5.25f         // Clock frequence of state machine for PIO handling sync
 -#define piofreq_1_256 7.00f     // Clock frequency of state machine for PIO handling pixel data at various resolutions
-+#define piofreq_1_256 7.20f     // Slightly slower clock widens the fixed 256 px active picture
++#define piofreq_1_256 7.00f     // Trying to make borders more balanced
  #define piofreq_1_320 5.60f
  #define piofreq_1_640 2.80f
- 
+
 @@ -62,3 +62,5 @@
  
  void wait_vblank(void);

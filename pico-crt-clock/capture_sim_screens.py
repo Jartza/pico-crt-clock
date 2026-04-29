@@ -234,10 +234,22 @@ class _ADC:
         return 32768
 
 
+class _Mem32:
+    def __init__(self):
+        self._words = {}
+
+    def __getitem__(self, addr):
+        return self._words.get(addr, 0)
+
+    def __setitem__(self, addr, value):
+        self._words[addr] = value & 0xFFFF_FFFF
+
+
 def _install_mock_modules():
     machine = types.ModuleType("machine")
     machine.Pin = _Pin
     machine.ADC = _ADC
+    machine.mem32 = _Mem32()
     machine.PWRON_RESET = 1
     machine.WDT_RESET = 3
     machine.reset_cause = lambda: machine.WDT_RESET + 1
