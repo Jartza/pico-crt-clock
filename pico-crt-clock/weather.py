@@ -10,6 +10,7 @@ from common import *
 WEATHER_DIR          = 'weathercache'
 WEATHER_DAILY_CACHE  = WEATHER_DIR + '/weather_d.json'
 WEATHER_HOURLY_CACHE = WEATHER_DIR + '/weather_h.json'
+WEATHER_RETRY_INTERVAL = 60
 
 with open('icons.bin', 'rb') as _f:
     _icons = _f.read()
@@ -156,7 +157,8 @@ def _fetch_escape_wait(pin):
     return False
 
 def fetch_weather():
-    reconnect_wifi(wlan)
+    global wlan
+    wlan = reconnect_wifi(wlan)
     base = "https://api.open-meteo.com/v1/forecast?latitude={}&longitude={}&timezone=auto".format(
         LATITUDE, LONGITUDE)
     tunit = "fahrenheit" if TEMP_UNIT == "F" else "celsius"
@@ -267,21 +269,28 @@ def run(pin=None):
     # Reuse flash-cached weather if it's still within WEATHER_INTERVAL old;
     # otherwise fetch from the network. Mode switches re-enter run() often,
     # so without this the weather API would be hit every time.
+    next_weather_ts = time.time()
+    fetched_initial = False
     _age = _cache_age()
     if _age is not None and _age < WEATHER_INTERVAL:
         _raw = _load_cached_weather()
-        last_weather_ts = time.time() - int(_age)
+        next_weather_ts = time.time() - int(_age) + WEATHER_INTERVAL
     else:
         if _fetch_escape_wait(pin):
             return
         _raw = fetch_weather()
-        last_weather_ts = time.time()
+        fetched_initial = True
     ct, ws, days = parse_weather(_raw, 1 if FORECAST_NEXT_DAY_HOUR > 0 and _boot_h >= FORECAST_NEXT_DAY_HOUR else 0)
     if days:
         cur_temp   = ct
         wind_speed = ws
         weather    = days
-    weather_ok = bool(days)
+        weather_ok = True
+        if fetched_initial:
+            next_weather_ts = time.time() + WEATHER_INTERVAL
+    else:
+        weather_ok = False
+        next_weather_ts = time.time() + (WEATHER_RETRY_INTERVAL if fetched_initial else 0)
     _store_hourly(_raw)
     del _raw
     gc.collect()
@@ -321,8 +330,24 @@ def run(pin=None):
                 pass
 
         start_day = 1 if FORECAST_NEXT_DAY_HOUR > 0 and h >= FORECAST_NEXT_DAY_HOUR else 0
-        _wi = 30 if cur_temp is None else WEATHER_INTERVAL
-        if now - last_weather_ts >= _wi or start_day != last_start_day:
+        if start_day != last_start_day and now < next_weather_ts:
+            _raw = _load_cached_weather()
+            ct, ws, days = parse_weather(_raw, start_day)
+            if days:
+                cur_temp    = ct
+                wind_speed  = ws
+                weather     = days
+                weather_ok  = True
+                _store_hourly(_raw)
+            else:
+                weather_ok = False
+                next_weather_ts = now
+            del _raw
+            gc.collect()
+            last_start_day = start_day
+            last_h         = h
+
+        if now >= next_weather_ts:
             if _fetch_escape_wait(pin):
                 break
             _raw = fetch_weather()
@@ -331,11 +356,14 @@ def run(pin=None):
                 cur_temp    = ct
                 wind_speed  = ws
                 weather     = days
-            weather_ok = bool(days)
+                weather_ok  = True
+                next_weather_ts = time.time() + WEATHER_INTERVAL
+            else:
+                weather_ok = False
+                next_weather_ts = time.time() + WEATHER_RETRY_INTERVAL
             _store_hourly(_raw)
             del _raw
             gc.collect()
-            last_weather_ts  = now
             last_start_day   = start_day
             last_h           = h
 

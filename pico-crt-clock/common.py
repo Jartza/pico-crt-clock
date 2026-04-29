@@ -104,18 +104,27 @@ def connect_wifi():
     return None
 
 def reconnect_wifi(wlan):
-    """Reconnect if disconnected; shows banner while attempting."""
-    if wlan is not None and not wlan.isconnected():
-        draw_banner("Reconnecting WiFi...")
-        try:
-            wlan.connect(WIFI_SSID, WIFI_PASS)
-            deadline = time.ticks_add(time.ticks_ms(), WIFI_TIMEOUT_MS)
-            while time.ticks_diff(deadline, time.ticks_ms()) > 0:
-                if wlan.isconnected():
-                    break
-                time.sleep_ms(500)
-        except Exception:
-            pass
+    """Reconnect if disconnected; shows banner while attempting.
+
+    Returns the WLAN handle so callers can recover if the initial
+    connect_wifi() call timed out and returned None.
+    """
+    if wlan is None:
+        return connect_wifi()
+    if wlan.isconnected():
+        return wlan
+    draw_banner("Reconnecting WiFi...")
+    try:
+        wlan.active(True)
+        wlan.connect(WIFI_SSID, WIFI_PASS)
+        deadline = time.ticks_add(time.ticks_ms(), WIFI_TIMEOUT_MS)
+        while time.ticks_diff(deadline, time.ticks_ms()) > 0:
+            if wlan.isconnected():
+                break
+            time.sleep_ms(500)
+    except Exception:
+        pass
+    return wlan
 
 def sync_ntp(clear=False):
     """Sync RTC from NTP. clear=True at boot for a clean screen; False overlays banner on running display."""
