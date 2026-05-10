@@ -191,14 +191,24 @@ def parse_weather(data, start_day=0):
     try:
         _now = time.time()
         _lt  = time.localtime(_now + _utc_offset(_now))
-        _ts  = "{:04d}-{:02d}-{:02d}T{:02d}:00".format(_lt[0], _lt[1], _lt[2], _lt[3])
-        _hi  = next((i for i, t in enumerate(data['hourly']['time']) if t == _ts), 0)
-        cur_temp   = round(data['hourly']['temperature_2m'][_hi])
+        _today = "{:04d}-{:02d}-{:02d}".format(_lt[0], _lt[1], _lt[2])
+        _ts  = "{}T{:02d}:00".format(_today, _lt[3])
+        _hi  = next((i for i, t in enumerate(data['hourly']['time']) if t == _ts), -1)
+        cur_temp = round(data['hourly']['temperature_2m'][_hi]) if _hi >= 0 else None
         wind_speed = round(data['current']['wind_speed_10m'])
         daily      = data['daily']
         days = []
-        n = len(daily['time'])
-        for i in range(start_day, min(start_day + 3, n)):
+        daily_times = daily['time']
+        n = len(daily_times)
+        first_day = -1
+        for i in range(n):
+            if daily_times[i] >= _today:
+                first_day = i
+                break
+        if first_day < 0:
+            return None, None, None
+        start_i = first_day + start_day
+        for i in range(start_i, min(start_i + 3, n)):
             code     = daily['weather_code'][i]
             tmax     = round(daily['temperature_2m_max'][i])
             date_str = daily['time'][i]             # "YYYY-MM-DD"
