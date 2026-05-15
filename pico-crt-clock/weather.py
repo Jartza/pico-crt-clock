@@ -249,7 +249,7 @@ def _store_hourly(data):
         _today_hrs = None
 
 def run(pin=None):
-    global wlan
+    global wlan, _today_hrs
 
     gfx.init()
     gfx.set_border(0)
@@ -334,6 +334,11 @@ def run(pin=None):
 
         if day != last_day:
             last_day = day
+            # Cached hourly data is keyed to the previous day; drop it and
+            # force an immediate refetch so the current temperature reflects
+            # the new day instead of going blank or holding a stale value.
+            _today_hrs = None
+            next_weather_ts = now
             try:
                 ntptime.settime()
             except Exception:
